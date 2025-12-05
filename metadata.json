@@ -1,0 +1,5 @@
+{
+  "name": "NutriPlan Safe",
+  "description": "A nutrition-safe meal planning assistant that generates balanced, culturally flexible meal plans using Google Gemini.",
+  "requestFramePermissions": []
+}
