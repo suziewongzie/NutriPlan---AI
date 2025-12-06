@@ -1,7 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { NutritionPlanResponse, DayPlan, MealItem } from '../types';
 import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer, Legend } from 'recharts';
-import { ChevronDown, ChevronUp, ShoppingBag, Utensils, Flame, Leaf, BadgeCheck, CalendarDays, Check, RefreshCw, Loader2, ChefHat, Timer } from 'lucide-react';
+import { ChevronDown, ChevronUp, ShoppingBag, Utensils, Flame, Leaf, BadgeCheck, CalendarDays, Check, RefreshCw, Loader2, ChefHat, Timer, Scale, Lightbulb } from 'lucide-react';
 
 interface PlanDisplayProps {
   plan: NutritionPlanResponse;
@@ -317,33 +317,42 @@ const MealCard: React.FC<{ item: MealItem, onSwap: () => Promise<void> }> = ({ i
         <div className="px-4 pb-4 pt-0 bg-slate-50/50 rounded-b-xl animate-in slide-in-from-top-1">
           
            {item.recipeTip && (
-            <div className="mt-3 bg-emerald-50 border border-emerald-100 rounded-lg p-3">
-              <div className="flex items-center gap-2 text-emerald-700 font-bold text-xs mb-1">
-                <Leaf className="w-4 h-4"/> 
-                <span>Chef's Tip & Variations</span>
+            <div className="mt-4 bg-gradient-to-br from-emerald-50 to-teal-50 border border-emerald-100 rounded-xl p-5 relative overflow-hidden">
+               {/* Decorative background element */}
+               <div className="absolute top-0 right-0 -mt-2 -mr-2 w-16 h-16 bg-emerald-100 rounded-full opacity-50 blur-xl"></div>
+               
+              <div className="flex gap-4 relative z-10">
+                 <div className="flex-shrink-0 mt-1">
+                   <div className="w-10 h-10 rounded-full bg-white flex items-center justify-center shadow-sm text-emerald-600 border border-emerald-100">
+                     <Lightbulb size={20} className="fill-emerald-100" />
+                   </div>
+                 </div>
+                 <div className="flex-1">
+                   <h6 className="text-emerald-900 font-bold text-sm uppercase tracking-wider mb-2 flex items-center gap-2">
+                     Chef's Secret
+                   </h6>
+                   <p className="text-sm text-slate-700 leading-relaxed font-medium">
+                     {item.recipeTip}
+                   </p>
+                 </div>
               </div>
-              <p className="text-sm text-emerald-900/80 leading-relaxed">
-                {item.recipeTip}
-              </p>
             </div>
           )}
 
           <div className="mt-4 pt-4 border-t border-slate-200/60">
-             <div className="flex items-center gap-2 mb-3 text-slate-800 font-semibold text-sm">
-                <ChefHat className="w-4 h-4 text-orange-500" />
-                <span>Recipe & Instructions</span>
-             </div>
              
              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                {/* Ingredients */}
                {item.ingredients && item.ingredients.length > 0 && (
-                 <div className="bg-white p-3 rounded-lg border border-slate-100">
-                   <h6 className="text-[10px] uppercase font-bold text-slate-400 mb-2">Ingredients & Portions</h6>
-                   <ul className="space-y-1">
+                 <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
+                   <h6 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-3 flex items-center gap-2">
+                     <Scale className="w-3 h-3" /> Ingredients
+                   </h6>
+                   <ul className="space-y-2.5">
                      {item.ingredients.map((ing, i) => (
-                       <li key={i} className="text-xs text-slate-600 flex items-start gap-2">
-                         <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 mt-1.5 flex-shrink-0"></span>
-                         <span>{ing}</span>
+                       <li key={i} className="text-sm text-slate-700 flex items-start gap-2.5 border-b border-dashed border-slate-100 last:border-0 pb-1.5 last:pb-0">
+                         <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 mt-2 flex-shrink-0"></div>
+                         <span className="leading-snug">{ing}</span>
                        </li>
                      ))}
                    </ul>
@@ -352,12 +361,14 @@ const MealCard: React.FC<{ item: MealItem, onSwap: () => Promise<void> }> = ({ i
 
                {/* Steps */}
                {item.instructions && item.instructions.length > 0 && (
-                 <div className="bg-white p-3 rounded-lg border border-slate-100">
-                   <h6 className="text-[10px] uppercase font-bold text-slate-400 mb-2">Instructions</h6>
-                   <ol className="space-y-2">
+                 <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
+                   <h6 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-3 flex items-center gap-2">
+                     <Timer className="w-3 h-3" /> Instructions
+                   </h6>
+                   <ol className="space-y-3">
                      {item.instructions.map((step, i) => (
-                       <li key={i} className="text-xs text-slate-600 flex gap-2">
-                         <span className="font-bold text-slate-300">{i + 1}.</span>
+                       <li key={i} className="text-sm text-slate-600 flex gap-3">
+                         <span className="font-bold text-emerald-600/40 font-mono text-lg leading-none select-none">{i + 1}.</span>
                          <span className="leading-relaxed">{step}</span>
                        </li>
                      ))}
@@ -367,7 +378,7 @@ const MealCard: React.FC<{ item: MealItem, onSwap: () => Promise<void> }> = ({ i
              </div>
           </div>
 
-          <div className="mt-3 flex gap-3 text-xs text-slate-400 border-t border-slate-100 pt-2 justify-end">
+          <div className="mt-4 flex gap-3 text-xs text-slate-400 border-t border-slate-100 pt-3 justify-end">
             <div className="flex gap-2 sm:gap-4 flex-wrap justify-end">
                <span className="flex items-center gap-1">
                  <span className="w-2 h-2 rounded-full bg-emerald-400"></span> 

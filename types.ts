@@ -70,3 +70,11 @@ export interface NutritionPlanResponse {
     items: string[];
   }[];
 }
+
+export interface FoodLogEntry {
+  id: string;
+  name: string;
+  calories: number;
+  macros: MacroNutrients;
+  timestamp: string; // ISO string
+}

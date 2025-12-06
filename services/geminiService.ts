@@ -20,11 +20,14 @@ const mealItemSchema: Schema = {
     description: { type: Type.STRING },
     calories: { type: Type.NUMBER },
     macros: macroSchema,
-    recipeTip: { type: Type.STRING, description: "A helpful cooking tip, flavor variation, or plating suggestion (2-3 sentences)." },
+    recipeTip: { 
+      type: Type.STRING, 
+      description: "A detailed professional chef tip (4-6 sentences). Include specific technique advice (e.g. searing temp), a flavor variation (e.g. spice swap), AND a substitution idea." 
+    },
     ingredients: { 
       type: Type.ARRAY, 
       items: { type: Type.STRING }, 
-      description: "List of 5-6 main ingredients WITH QUANTITIES/PORTIONS matching the calories (e.g. '150g Chicken Breast', '1 cup Rice')." 
+      description: "List of ingredients. CRITICAL: EVERY SINGLE ITEM MUST HAVE A NUMERICAL QUANTITY/MEASUREMENT. Format: 'Quantity Unit Ingredient'. Example: '200g Salmon', '1 tbsp Oil', '1/2 cup Rice'. Do NOT list ingredients without amounts." 
     },
     instructions: { 
       type: Type.ARRAY, 
@@ -111,9 +114,13 @@ export const generateMealPlan = async (data: UserFormData): Promise<NutritionPla
     3. Ensure adequate protein (>0.8g/kg bodyweight) and balanced macronutrients.
     4. Provide specific recipes/dishes matching the cuisine preference.
     5. Meal Structure: Generate exactly ${data.mealsPerDay} main meals${data.includeSnacks ? ` and ${data.snacksPerDay} snacks` : ''} for each day. Label them clearly.
-    6. RECIPE DETAILS: 
-       - Ingredients MUST have specific quantities (e.g. "150g Chicken", "1/2 cup Rice") to match the calories.
-       - Provide a detailed Chef's Tip or variation for every meal.
+    
+    RECIPE DETAILS (MANDATORY):
+    - INGREDIENT QUANTITIES: You MUST provide a quantity for EVERY SINGLE ingredient.
+      * INCORRECT: ["Chicken", "Rice", "Salt"]
+      * CORRECT: ["150g Chicken Breast", "1 cup Cooked Rice", "1/2 tsp Salt"]
+      NEVER output a raw ingredient name without a measurement.
+    - CHEF'S TIP: Provide a comprehensive 4-6 sentence tip. Go beyond "Cook it well". Suggest how to enhance flavor with spices, a specific cooking technique to keep moisture, or a healthy alternative ingredient.
 
     Output the result as a structured JSON object matching the schema.
   `;
@@ -125,7 +132,7 @@ export const generateMealPlan = async (data: UserFormData): Promise<NutritionPla
       config: {
         responseMimeType: "application/json",
         responseSchema: responseSchema,
-        systemInstruction: "You are a professional, safety-conscious nutritionist AI. You generate realistic, balanced meal plans.",
+        systemInstruction: "You are a professional nutritionist AI. You generate realistic, balanced meal plans. You ALWAYS provide specific quantities for ingredients.",
       },
     });
 
@@ -163,7 +170,8 @@ export const getAlternativeMeal = async (
     2. Has similar calories (within +/- 10%) and balanced macros.
     3. Matches the cuisine preference: ${data.cuisinePreference}.
     4. Is strictly safe and healthy.
-    5. Includes ingredients list WITH QUANTITIES and detailed cooking instructions.
+    5. INGREDIENT QUANTITIES: STRICTLY REQUIRED. e.g. "100g Tofu", NOT just "Tofu".
+    6. Includes a detailed Chef's Tip (4-6 sentences) with cooking advice and variations.
 
     Output JSON matching the MealItem schema.
   `;
@@ -175,7 +183,7 @@ export const getAlternativeMeal = async (
       config: {
         responseMimeType: "application/json",
         responseSchema: mealItemSchema,
-        systemInstruction: "You are a helpful nutritionist finding a meal alternative.",
+        systemInstruction: "You are a helpful nutritionist finding a meal alternative. You ALWAYS provide specific quantities for ingredients.",
       },
     });
 
@@ -188,3 +196,63 @@ export const getAlternativeMeal = async (
     throw error;
   }
 };
+
+export const analyzeFoodWithAI = async (description: string, imageBase64?: string): Promise<{ name: string; calories: number; macros: { protein: number; carbs: number; fats: number } }> => {
+  const modelId = "gemini-2.5-flash";
+  
+  const promptText = `
+    Analyze the nutritional content of the provided food${imageBase64 ? " image" : ""} ${description ? `and description: "${description}"` : ""}.
+    Estimate the total calories and macronutrients (protein, carbs, fats).
+    
+    Return a JSON object with:
+    - name: A short, display-friendly name of the food (e.g. "Grilled Chicken Salad").
+    - calories: estimated total kcal (number).
+    - macros: object with protein, carbs, fats (all in grams, numbers).
+  `;
+
+  const schema: Schema = {
+    type: Type.OBJECT,
+    properties: {
+      name: { type: Type.STRING },
+      calories: { type: Type.NUMBER },
+      macros: macroSchema
+    },
+    required: ["name", "calories", "macros"]
+  };
+
+  const parts: any[] = [{ text: promptText }];
+  
+  if (imageBase64) {
+    // Ensure we strip the data:image/xxx;base64, prefix if present for the API call, 
+    // although the client might pass it clean. Let's handle both.
+    const base64Data = imageBase64.includes(',') ? imageBase64.split(',')[1] : imageBase64;
+    
+    parts.unshift({
+      inlineData: {
+        mimeType: "image/jpeg", // We'll assume jpeg/png common formats
+        data: base64Data
+      }
+    });
+  }
+
+  try {
+    const result = await ai.models.generateContent({
+      model: modelId,
+      contents: { parts },
+      config: {
+        responseMimeType: "application/json",
+        responseSchema: schema,
+      },
+    });
+
+    const text = result.text;
+    if (!text) throw new Error("No data returned from Gemini");
+    return JSON.parse(text);
+  } catch (error) {
+    console.error("Gemini Analysis Error:", error);
+    throw error;
+  }
+};
+
+// Backwards compatibility alias if needed, or just replace usages
+export const analyzeMealDescription = (description: string) => analyzeFoodWithAI(description);
