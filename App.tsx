@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { UserFormData, NutritionPlanResponse, MealItem } from './types';
+import { UserFormData, NutritionPlanResponse, MealItem, FoodLogEntry } from './types';
 import { generateMealPlan, getAlternativeMeal } from './services/geminiService';
 import InputForm from './components/InputForm';
 import PlanDisplay from './components/PlanDisplay';
@@ -32,6 +32,17 @@ const App: React.FC = () => {
     }
   });
 
+  // Lifted Logs State
+  const [logs, setLogs] = useState<FoodLogEntry[]>(() => {
+    try {
+      const savedLogs = localStorage.getItem('dailyLogs');
+      return savedLogs ? JSON.parse(savedLogs) : [];
+    } catch (e) {
+      console.error("Failed to load logs from local storage", e);
+      return [];
+    }
+  });
+
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -51,6 +62,30 @@ const App: React.FC = () => {
       localStorage.removeItem('userFormData');
     }
   }, [currentFormData]);
+
+  useEffect(() => {
+    localStorage.setItem('dailyLogs', JSON.stringify(logs));
+  }, [logs]);
+
+  // Log Handlers
+  const addLog = (log: FoodLogEntry) => {
+    setLogs(prev => [log, ...prev]);
+  };
+
+  const removeLog = (id: string) => {
+    setLogs(prev => prev.filter(l => l.id !== id));
+  };
+
+  const handleLogMealFromPlan = (item: MealItem) => {
+    const newLog: FoodLogEntry = {
+      id: Date.now().toString(),
+      name: item.name,
+      calories: item.calories,
+      macros: item.macros,
+      timestamp: new Date().toISOString()
+    };
+    addLog(newLog);
+  };
 
   const handleFormSubmit = async (data: UserFormData) => {
     setLoading(true);
@@ -263,6 +298,7 @@ const App: React.FC = () => {
                   plan={plan} 
                   onReset={handleResetGenerator} 
                   onSwapMeal={handleSwapMeal}
+                  onLogMeal={handleLogMealFromPlan}
                 />
               </div>
             )}
@@ -270,7 +306,13 @@ const App: React.FC = () => {
         )}
 
         {view === 'logger' && (
-          <MealLogger onBack={() => setView('home')} />
+          <MealLogger 
+            onBack={() => setView('home')} 
+            logs={logs}
+            onAddLog={addLog}
+            onRemoveLog={removeLog}
+            dailyGoal={currentFormData?.targetCalories || 2000}
+          />
         )}
 
       </main>

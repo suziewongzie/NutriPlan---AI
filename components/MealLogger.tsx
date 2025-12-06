@@ -1,23 +1,17 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef } from 'react';
 import { FoodLogEntry } from '../types';
 import { analyzeFoodWithAI } from '../services/geminiService';
 import { Plus, Trash2, Loader2, Sparkles, PieChart as PieChartIcon, Search, ImagePlus, X, UploadCloud, Camera, ArrowLeft, Beef, Wheat, Droplet, Flame } from 'lucide-react';
 
 interface MealLoggerProps {
   onBack: () => void;
+  logs: FoodLogEntry[];
+  onAddLog: (log: FoodLogEntry) => void;
+  onRemoveLog: (id: string) => void;
+  dailyGoal: number;
 }
 
-const MealLogger: React.FC<MealLoggerProps> = ({ onBack }) => {
-  const [logs, setLogs] = useState<FoodLogEntry[]>(() => {
-    try {
-      const savedLogs = localStorage.getItem('dailyLogs');
-      return savedLogs ? JSON.parse(savedLogs) : [];
-    } catch (e) {
-      console.error("Failed to load logs from local storage", e);
-      return [];
-    }
-  });
-  
+const MealLogger: React.FC<MealLoggerProps> = ({ onBack, logs, onAddLog, onRemoveLog, dailyGoal }) => {
   const [activeTab, setActiveTab] = useState<'ai' | 'manual'>('ai');
   
   // AI State
@@ -35,13 +29,6 @@ const MealLogger: React.FC<MealLoggerProps> = ({ onBack }) => {
     fats: '',
     image: '' as string | null
   });
-
-  const dailyGoal = 2000; 
-
-  // Persist logs to local storage whenever they change
-  useEffect(() => {
-    localStorage.setItem('dailyLogs', JSON.stringify(logs));
-  }, [logs]);
 
   const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -102,15 +89,11 @@ const MealLogger: React.FC<MealLoggerProps> = ({ onBack }) => {
 
     (newLog as any).image = manualForm.image;
 
-    setLogs([newLog, ...logs]);
+    onAddLog(newLog);
     
     setManualForm({ name: '', calories: '', protein: '', carbs: '', fats: '', image: null });
     setAiInput('');
     setSelectedImage(null);
-  };
-
-  const removeLog = (id: string) => {
-    setLogs(logs.filter(l => l.id !== id));
   };
 
   const totals = logs.reduce((acc, log) => ({
@@ -471,7 +454,7 @@ const MealLogger: React.FC<MealLoggerProps> = ({ onBack }) => {
                      </div>
 
                      <button 
-                        onClick={() => removeLog(log.id)} 
+                        onClick={() => onRemoveLog(log.id)} 
                         className="text-slate-300 hover:text-red-500 p-3 rounded-full hover:bg-red-50 transition-all opacity-0 group-hover:opacity-100 focus:opacity-100"
                         title="Delete entry"
                       >

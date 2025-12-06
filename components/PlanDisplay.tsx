@@ -1,17 +1,18 @@
 import React, { useState, useMemo } from 'react';
 import { NutritionPlanResponse, DayPlan, MealItem } from '../types';
 import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer, Legend } from 'recharts';
-import { ChevronDown, ChevronUp, ShoppingBag, Utensils, Flame, Leaf, BadgeCheck, CalendarDays, Check, RefreshCw, Loader2, ChefHat, Timer, Scale, Lightbulb } from 'lucide-react';
+import { ChevronDown, ChevronUp, ShoppingBag, Utensils, Flame, Leaf, BadgeCheck, CalendarDays, Check, RefreshCw, Loader2, ChefHat, Timer, Scale, Lightbulb, PlusCircle, CheckCircle2 } from 'lucide-react';
 
 interface PlanDisplayProps {
   plan: NutritionPlanResponse;
   onReset: () => void;
   onSwapMeal: (dayIndex: number, mealGroupIndex: number, itemIndex: number, currentItem: MealItem, mealType: string) => Promise<void>;
+  onLogMeal: (item: MealItem) => void;
 }
 
 const COLORS = ['#10b981', '#3b82f6', '#f59e0b']; // Protein (Emerald), Carbs (Blue), Fats (Amber)
 
-const PlanDisplay: React.FC<PlanDisplayProps> = ({ plan, onReset, onSwapMeal }) => {
+const PlanDisplay: React.FC<PlanDisplayProps> = ({ plan, onReset, onSwapMeal, onLogMeal }) => {
   const [activeDayIndex, setActiveDayIndex] = useState(0);
   const [activeWeek, setActiveWeek] = useState(0);
   const [checkedItems, setCheckedItems] = useState<Set<string>>(new Set());
@@ -154,6 +155,7 @@ const PlanDisplay: React.FC<PlanDisplayProps> = ({ plan, onReset, onSwapMeal }) 
                           key={itemIdx} 
                           item={item} 
                           onSwap={async () => await onSwapMeal(absoluteDayIndex, groupIdx, itemIdx, item, mealGroup.type)}
+                          onLog={() => onLogMeal(item)}
                        />
                      ))}
                    </div>
@@ -265,15 +267,23 @@ const PlanDisplay: React.FC<PlanDisplayProps> = ({ plan, onReset, onSwapMeal }) 
   );
 };
 
-const MealCard: React.FC<{ item: MealItem, onSwap: () => Promise<void> }> = ({ item, onSwap }) => {
+const MealCard: React.FC<{ item: MealItem, onSwap: () => Promise<void>, onLog: () => void }> = ({ item, onSwap, onLog }) => {
   const [isOpen, setIsOpen] = useState(false);
   const [isSwapping, setIsSwapping] = useState(false);
+  const [isLogged, setIsLogged] = useState(false);
 
   const handleSwapClick = async (e: React.MouseEvent) => {
     e.stopPropagation();
     setIsSwapping(true);
     await onSwap();
     setIsSwapping(false);
+  };
+
+  const handleLogClick = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    onLog();
+    setIsLogged(true);
+    setTimeout(() => setIsLogged(false), 2000);
   };
 
   return (
@@ -308,6 +318,22 @@ const MealCard: React.FC<{ item: MealItem, onSwap: () => Promise<void> }> = ({ i
                   <RefreshCw className="w-3 h-3" />
                 )}
                 Swap
+            </button>
+            <button 
+                onClick={handleLogClick}
+                className={`flex items-center gap-1.5 text-[10px] font-medium px-3 py-1 rounded border transition-all z-20 ${
+                   isLogged 
+                     ? 'bg-emerald-100 text-emerald-700 border-emerald-200' 
+                     : 'bg-white text-slate-400 hover:text-indigo-600 border-slate-200 hover:border-indigo-200'
+                }`}
+                title="Log this meal to daily tracker"
+              >
+                {isLogged ? (
+                  <CheckCircle2 className="w-3 h-3" />
+                ) : (
+                  <PlusCircle className="w-3 h-3" />
+                )}
+                {isLogged ? 'Logged' : 'Log Meal'}
             </button>
           </div>
         </div>
