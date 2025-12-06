@@ -7,12 +7,15 @@ export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, (process as any).cwd(), '');
   return {
     plugins: [react()],
-    // Default base '/' is best for Vercel root deployments
+    // Use root base for Vercel SPA to ensure assets load correctly on all routes
+    base: '/',
     define: {
       // Safely replace API key
       'process.env.API_KEY': JSON.stringify(env.API_KEY),
       // Define NODE_ENV to prevent libraries checking process.env.NODE_ENV from crashing
       'process.env.NODE_ENV': JSON.stringify(mode),
+      // Polyfill global for libraries that expect it (like Google GenAI SDK)
+      global: 'window',
     }
   }
 })
