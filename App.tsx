@@ -95,7 +95,9 @@ const App: React.FC = () => {
       const result = await generateMealPlan(data);
       setPlan(result);
     } catch (err: any) {
-      setError("We encountered an issue connecting to our nutritionist AI. Please try again in a moment.");
+      console.error("Full Error:", err);
+      // Display the specific error message to help debugging
+      setError(err.message || "We encountered an issue connecting to our nutritionist AI. Please check your API key and try again.");
     } finally {
       setLoading(false);
     }
@@ -149,6 +151,7 @@ const App: React.FC = () => {
       setPlan(newPlan);
     } catch (err) {
       console.error("Failed to swap meal", err);
+      alert("Could not swap meal. Please try again.");
     }
   };
 
@@ -268,9 +271,9 @@ const App: React.FC = () => {
                <div className="flex flex-col items-center justify-center min-h-[40vh] space-y-4">
                  <div className="bg-red-50 p-6 rounded-2xl border border-red-100 max-w-md text-center">
                    <h3 className="text-red-700 font-semibold mb-2">Oops! Something went wrong.</h3>
-                   <p className="text-red-600/80 text-sm mb-4">{error}</p>
+                   <p className="text-red-600/80 text-sm mb-4 break-words">{error}</p>
                    <button onClick={() => setError(null)} className="px-4 py-2 bg-white border border-red-200 text-red-600 rounded-lg hover:bg-red-50 transition">
-                     Try Again
+                     Back to Form
                    </button>
                  </div>
                </div>

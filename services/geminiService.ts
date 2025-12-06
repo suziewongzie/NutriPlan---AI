@@ -6,8 +6,12 @@ let aiClient: GoogleGenAI | null = null;
 
 const getAiClient = (): GoogleGenAI => {
   if (!aiClient) {
-    // This will throw only when called, not on app load
-    aiClient = new GoogleGenAI({ apiKey: process.env.API_KEY });
+    const apiKey = process.env.API_KEY;
+    // Check for empty string or undefined string "undefined" which can happen during stringify replacement
+    if (!apiKey || apiKey === "undefined" || apiKey.length === 0) {
+       throw new Error("API Key is missing. Please add API_KEY to your Vercel Environment Variables.");
+    }
+    aiClient = new GoogleGenAI({ apiKey });
   }
   return aiClient;
 };
