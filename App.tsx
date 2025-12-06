@@ -4,7 +4,7 @@ import { generateMealPlan, getAlternativeMeal } from './services/geminiService';
 import InputForm from './components/InputForm';
 import PlanDisplay from './components/PlanDisplay';
 import MealLogger from './components/MealLogger';
-import { Leaf, Loader2, CalendarHeart, PenLine, ArrowRight } from 'lucide-react';
+import { Leaf, Loader2, CalendarHeart, PenLine, ArrowRight, Plus, History } from 'lucide-react';
 
 type AppView = 'home' | 'generator' | 'logger';
 
@@ -153,8 +153,8 @@ const App: React.FC = () => {
               
               {/* Option 1: Generator */}
               <div 
-                onClick={() => setView('generator')}
-                className="bg-white p-8 rounded-3xl shadow-xl border border-slate-100 cursor-pointer hover:shadow-2xl hover:border-emerald-200 hover:-translate-y-1 transition-all group"
+                onClick={() => !plan && setView('generator')}
+                className={`bg-white p-8 rounded-3xl shadow-xl border border-slate-100 transition-all group flex flex-col relative ${!plan ? 'cursor-pointer hover:shadow-2xl hover:border-emerald-200 hover:-translate-y-1' : ''}`}
               >
                 <div className="w-16 h-16 bg-emerald-50 rounded-2xl flex items-center justify-center mb-6 group-hover:bg-emerald-100 transition-colors">
                   <CalendarHeart className="w-8 h-8 text-emerald-600" />
@@ -163,8 +163,33 @@ const App: React.FC = () => {
                 <p className="text-slate-500 mb-6">
                   Create a customized 7-30 day meal plan based on your body metrics, goals, and cuisine preferences.
                 </p>
-                <div className="flex items-center font-semibold text-emerald-600">
-                  {plan ? "View Saved Plan" : "Start Planning"} <ArrowRight className="w-4 h-4 ml-2 group-hover:translate-x-1 transition-transform" />
+                
+                <div className="mt-auto">
+                  {plan ? (
+                    <div className="flex flex-col gap-3 animate-in fade-in">
+                       <button 
+                         onClick={() => setView('generator')}
+                         className="w-full py-3 bg-emerald-100 text-emerald-700 rounded-xl font-bold flex items-center justify-center gap-2 hover:bg-emerald-200 transition-colors shadow-sm"
+                       >
+                         <History className="w-4 h-4" /> Open Existing Plan
+                       </button>
+                       <button 
+                         onClick={() => {
+                            if (window.confirm("Are you sure you want to create a new plan? This will replace your existing one.")) {
+                               handleResetGenerator();
+                               setView('generator');
+                            }
+                         }}
+                         className="w-full py-3 bg-white border border-slate-200 text-slate-600 rounded-xl font-semibold flex items-center justify-center gap-2 hover:border-emerald-500 hover:text-emerald-600 transition-all"
+                       >
+                         <Plus className="w-4 h-4" /> Start New Plan
+                       </button>
+                    </div>
+                  ) : (
+                    <div className="flex items-center font-semibold text-emerald-600">
+                      Start Planning <ArrowRight className="w-4 h-4 ml-2 group-hover:translate-x-1 transition-transform" />
+                    </div>
+                  )}
                 </div>
               </div>
 
@@ -180,7 +205,7 @@ const App: React.FC = () => {
                 <p className="text-slate-500 mb-6">
                   Log your daily intake quickly. Use AI to estimate calories from simple text descriptions.
                 </p>
-                <div className="flex items-center font-semibold text-indigo-600">
+                <div className="flex items-center font-semibold text-indigo-600 mt-auto">
                   Start Logging <ArrowRight className="w-4 h-4 ml-2 group-hover:translate-x-1 transition-transform" />
                 </div>
               </div>
