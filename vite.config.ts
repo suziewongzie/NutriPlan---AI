@@ -7,10 +7,8 @@ export default defineConfig(({ mode }) => {
   return {
     plugins: [react()],
     define: {
-      // Define process.env as an object to prevent crashes if libs access it
-      'process.env': {
-        API_KEY: env.API_KEY
-      }
+      // Define specific string replacement for the API key to prevent 'process' object conflicts
+      'process.env.API_KEY': JSON.stringify(env.API_KEY)
     }
   }
 })

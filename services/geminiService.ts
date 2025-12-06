@@ -1,7 +1,16 @@
 import { GoogleGenAI, Type, Schema } from "@google/genai";
 import { UserFormData, NutritionPlanResponse, MealItem } from "../types";
 
-const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+// Lazy initialization holder
+let aiClient: GoogleGenAI | null = null;
+
+const getAiClient = (): GoogleGenAI => {
+  if (!aiClient) {
+    // This will throw only when called, not on app load
+    aiClient = new GoogleGenAI({ apiKey: process.env.API_KEY });
+  }
+  return aiClient;
+};
 
 const macroSchema: Schema = {
   type: Type.OBJECT,
@@ -82,6 +91,7 @@ const responseSchema: Schema = {
 
 export const generateMealPlan = async (data: UserFormData): Promise<NutritionPlanResponse> => {
   const modelId = "gemini-2.5-flash"; 
+  const ai = getAiClient();
 
   // Handle 30-day requests by generating a 4-week plan (28 days).
   const isLongDuration = data.duration > 7;
@@ -152,6 +162,7 @@ export const getAlternativeMeal = async (
   mealType: string
 ): Promise<MealItem> => {
   const modelId = "gemini-2.5-flash";
+  const ai = getAiClient();
 
   const prompt = `
     The user wants to SWAP a specific meal in their plan.
@@ -199,6 +210,7 @@ export const getAlternativeMeal = async (
 
 export const analyzeFoodWithAI = async (description: string, imageBase64?: string): Promise<{ name: string; calories: number; macros: { protein: number; carbs: number; fats: number } }> => {
   const modelId = "gemini-2.5-flash";
+  const ai = getAiClient();
   
   const promptText = `
     Analyze the nutritional content of the provided food${imageBase64 ? " image" : ""} ${description ? `and description: "${description}"` : ""}.
@@ -254,5 +266,5 @@ export const analyzeFoodWithAI = async (description: string, imageBase64?: strin
   }
 };
 
-// Backwards compatibility alias if needed, or just replace usages
+// Backwards compatibility alias
 export const analyzeMealDescription = (description: string) => analyzeFoodWithAI(description);
