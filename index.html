@@ -7,10 +7,8 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <script>
-      // Polyfill process and global for browser compatibility
-      window.process = {
-        env: { NODE_ENV: 'production' }
-      };
+      // Critical Polyfills for Vercel/Vite environment
+      window.process = window.process || { env: { NODE_ENV: 'production' } };
       window.global = window;
     </script>
     <style>
@@ -51,6 +49,7 @@
 </head>
   <body>
     <div id="root"></div>
-    <script type="module" src="/index.tsx"></script>
+    <!-- Use relative path ./index.tsx to ensure Vite finds the file in the root directory -->
+    <script type="module" src="./index.tsx"></script>
   </body>
 </html>
