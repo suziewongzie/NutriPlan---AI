@@ -1,7 +1,7 @@
 import React, { useState, useRef } from 'react';
 import { FoodLogEntry } from '../types';
 import { analyzeFoodWithAI } from '../services/geminiService';
-import { Plus, Trash2, Loader2, Sparkles, PieChart as PieChartIcon, Search, ImagePlus, X, UploadCloud, Camera, ArrowLeft, Beef, Wheat, Droplet, Flame } from 'lucide-react';
+import { Plus, Trash2, Loader2, Sparkles, PieChart as PieChartIcon, Search, ImagePlus, X, UploadCloud, Camera, ArrowLeft, Beef, Wheat, Droplet, Flame, Check } from 'lucide-react';
 
 interface MealLoggerProps {
   onBack: () => void;
@@ -9,10 +9,13 @@ interface MealLoggerProps {
   onAddLog: (log: FoodLogEntry) => void;
   onRemoveLog: (id: string) => void;
   dailyGoal: number;
+  planDuration: number;
 }
 
-const MealLogger: React.FC<MealLoggerProps> = ({ onBack, logs, onAddLog, onRemoveLog, dailyGoal }) => {
+const MealLogger: React.FC<MealLoggerProps> = ({ onBack, logs, onAddLog, onRemoveLog, dailyGoal, planDuration }) => {
   const [activeTab, setActiveTab] = useState<'ai' | 'manual'>('ai');
+  const [selectedDay, setSelectedDay] = useState(1);
+  const [isSuccess, setIsSuccess] = useState(false);
   
   // AI State
   const [aiInput, setAiInput] = useState('');
@@ -85,22 +88,31 @@ const MealLogger: React.FC<MealLoggerProps> = ({ onBack, logs, onAddLog, onRemov
         fats: Number(manualForm.fats) || 0,
       },
       timestamp: new Date().toISOString(),
+      dayNumber: selectedDay
     };
 
     (newLog as any).image = manualForm.image;
 
     onAddLog(newLog);
     
+    // Show success feedback on button
+    setIsSuccess(true);
+    setTimeout(() => setIsSuccess(false), 2000);
+
     setManualForm({ name: '', calories: '', protein: '', carbs: '', fats: '', image: null });
     setAiInput('');
     setSelectedImage(null);
   };
 
-  const totals = logs.reduce((acc, log) => ({
-    calories: acc.calories + log.calories,
-    protein: acc.protein + log.macros.protein,
-    carbs: acc.carbs + log.macros.carbs,
-    fats: acc.fats + log.macros.fats
+  // Filter logs for the selected day
+  // Default to Day 1 if dayNumber is missing (legacy logs)
+  const currentDayLogs = logs.filter(log => (log.dayNumber || 1) === selectedDay);
+
+  const totals = currentDayLogs.reduce((acc, log) => ({
+    calories: acc.calories + (log.calories || 0),
+    protein: acc.protein + (log.macros?.protein || 0),
+    carbs: acc.carbs + (log.macros?.carbs || 0),
+    fats: acc.fats + (log.macros?.fats || 0)
   }), { calories: 0, protein: 0, carbs: 0, fats: 0 });
 
   const progress = Math.min(100, (totals.calories / dailyGoal) * 100);
@@ -111,7 +123,7 @@ const MealLogger: React.FC<MealLoggerProps> = ({ onBack, logs, onAddLog, onRemov
   return (
     <div className="w-full max-w-3xl mx-auto pb-12 animate-fade-in px-4">
       {/* Header */}
-      <div className="flex items-center justify-between mb-8">
+      <div className="flex items-center justify-between mb-6">
         <button 
           onClick={onBack} 
           className="p-2 rounded-full hover:bg-slate-200 text-slate-500 transition-colors"
@@ -120,9 +132,26 @@ const MealLogger: React.FC<MealLoggerProps> = ({ onBack, logs, onAddLog, onRemov
         </button>
         <div className="text-center">
           <h2 className="text-2xl font-bold text-slate-800 tracking-tight">Daily Tracker</h2>
-          <p className="text-slate-500 text-xs">Log your meals to stay on target</p>
+          <p className="text-slate-500 text-xs">Log meals for your plan</p>
         </div>
         <div className="w-10"></div> {/* Spacer for centering */}
+      </div>
+
+      {/* Day Selector */}
+      <div className="flex overflow-x-auto gap-2 pb-4 mb-4 scrollbar-hide justify-start md:justify-center">
+        {Array.from({ length: planDuration }, (_, i) => i + 1).map((dayNum) => (
+          <button
+            key={dayNum}
+            onClick={() => setSelectedDay(dayNum)}
+            className={`px-4 py-2 rounded-xl text-sm font-bold transition-all whitespace-nowrap border ${
+              selectedDay === dayNum
+                ? 'bg-indigo-600 text-white border-indigo-600 shadow-md transform scale-105'
+                : 'bg-white text-slate-500 border-slate-200 hover:bg-slate-50'
+            }`}
+          >
+            Day {dayNum}
+          </button>
+        ))}
       </div>
 
       <div className="space-y-8">
@@ -135,7 +164,7 @@ const MealLogger: React.FC<MealLoggerProps> = ({ onBack, logs, onAddLog, onRemov
                <div className="p-1.5 bg-emerald-100 rounded-lg text-emerald-700">
                  <Flame className="w-4 h-4" />
                </div>
-               <h3 className="font-bold text-slate-800 text-lg">Calories Today</h3>
+               <h3 className="font-bold text-slate-800 text-lg">Day {selectedDay} Calories</h3>
              </div>
 
              <div className="flex flex-col items-center">
@@ -154,7 +183,7 @@ const MealLogger: React.FC<MealLoggerProps> = ({ onBack, logs, onAddLog, onRemov
                        cx="112" cy="112" r={radius} 
                        stroke={totals.calories > dailyGoal ? "#ef4444" : "#10b981"} 
                        strokeWidth="12" 
-                       strokeLinecap="round"
+                       strokeLinecap="round" 
                        fill="none" 
                        strokeDasharray={circumference}
                        strokeDashoffset={strokeDashoffset}
@@ -164,13 +193,13 @@ const MealLogger: React.FC<MealLoggerProps> = ({ onBack, logs, onAddLog, onRemov
                    
                    <div className="absolute inset-0 flex flex-col items-center justify-center select-none p-6 gap-2">
                      <span className="text-6xl font-extrabold text-slate-800 tracking-tighter leading-none">
-                       {Math.round(totals.calories)}
+                       {Math.round(totals.calories || 0)}
                      </span>
                      <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">
                        of {dailyGoal} kcal
                      </span>
                      <div className="text-xs font-bold px-4 py-1.5 bg-slate-100 rounded-full text-slate-600 shadow-sm border border-slate-200 mt-2">
-                        {Math.max(0, dailyGoal - Math.round(totals.calories))} remaining
+                        {Math.max(0, dailyGoal - Math.round(totals.calories || 0))} remaining
                      </div>
                    </div>
                  </div>
@@ -181,7 +210,7 @@ const MealLogger: React.FC<MealLoggerProps> = ({ onBack, logs, onAddLog, onRemov
                        <div className="w-8 h-8 rounded-full bg-emerald-100 text-emerald-600 flex items-center justify-center mb-2 group-hover:scale-110 transition-transform">
                           <Beef className="w-4 h-4" />
                        </div>
-                       <p className="text-lg font-bold text-slate-700">{Math.round(totals.protein)}g</p>
+                       <p className="text-lg font-bold text-slate-700">{Math.round(totals.protein || 0)}g</p>
                        <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Protein</p>
                    </div>
 
@@ -189,7 +218,7 @@ const MealLogger: React.FC<MealLoggerProps> = ({ onBack, logs, onAddLog, onRemov
                        <div className="w-8 h-8 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center mb-2 group-hover:scale-110 transition-transform">
                           <Wheat className="w-4 h-4" />
                        </div>
-                       <p className="text-lg font-bold text-slate-700">{Math.round(totals.carbs)}g</p>
+                       <p className="text-lg font-bold text-slate-700">{Math.round(totals.carbs || 0)}g</p>
                        <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Carbs</p>
                    </div>
 
@@ -197,7 +226,7 @@ const MealLogger: React.FC<MealLoggerProps> = ({ onBack, logs, onAddLog, onRemov
                        <div className="w-8 h-8 rounded-full bg-amber-100 text-amber-600 flex items-center justify-center mb-2 group-hover:scale-110 transition-transform">
                           <Droplet className="w-4 h-4" />
                        </div>
-                       <p className="text-lg font-bold text-slate-700">{Math.round(totals.fats)}g</p>
+                       <p className="text-lg font-bold text-slate-700">{Math.round(totals.fats || 0)}g</p>
                        <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Fats</p>
                    </div>
                  </div>
@@ -399,8 +428,19 @@ const MealLogger: React.FC<MealLoggerProps> = ({ onBack, logs, onAddLog, onRemov
                     </div>
                   </div>
                   
-                  <button type="submit" className="w-full py-4 bg-emerald-600 hover:bg-emerald-700 text-white rounded-2xl font-bold text-lg shadow-lg shadow-emerald-200 transition-all flex items-center justify-center gap-2 transform hover:translate-y-[-1px]">
-                    <Plus className="w-5 h-5" /> Add Log Entry
+                  <button 
+                    type="submit" 
+                    className={`w-full py-4 rounded-2xl font-bold text-lg shadow-lg transition-all flex items-center justify-center gap-2 transform ${
+                      isSuccess 
+                        ? 'bg-emerald-500 text-white shadow-emerald-200' 
+                        : 'bg-emerald-600 hover:bg-emerald-700 text-white shadow-emerald-200 hover:translate-y-[-1px]'
+                    }`}
+                  >
+                    {isSuccess ? (
+                       <> <Check className="w-5 h-5" /> Added! </>
+                    ) : (
+                       <> <Plus className="w-5 h-5" /> Add Log Entry </>
+                    )}
                   </button>
                 </form>
               )}
@@ -410,22 +450,22 @@ const MealLogger: React.FC<MealLoggerProps> = ({ onBack, logs, onAddLog, onRemov
         {/* Log List */}
         <div className="space-y-4">
              <div className="flex items-center justify-between px-2">
-               <h3 className="font-bold text-xl text-slate-800">Today's Meals</h3>
+               <h3 className="font-bold text-xl text-slate-800">Day {selectedDay} Meals</h3>
                <span className="text-xs font-bold text-slate-500 bg-white border border-slate-200 px-3 py-1 rounded-full shadow-sm">
-                 {logs.length} entries
+                 {currentDayLogs.length} entries
                </span>
              </div>
              
              <div className="space-y-3">
-               {logs.length === 0 ? (
+               {currentDayLogs.length === 0 ? (
                  <div className="text-center py-12 text-slate-400 bg-white rounded-3xl border border-dashed border-slate-200 shadow-sm">
                    <div className="w-16 h-16 bg-slate-50 rounded-full flex items-center justify-center mx-auto mb-4">
                      <Search className="w-6 h-6 text-slate-300" />
                    </div>
-                   <p className="font-medium text-slate-600">No meals logged yet</p>
+                   <p className="font-medium text-slate-600">No meals logged for Day {selectedDay}</p>
                  </div>
                ) : (
-                 logs.map(log => (
+                 currentDayLogs.map(log => (
                    <div key={log.id} className="flex items-center gap-5 p-4 rounded-2xl bg-white border border-slate-100 shadow-sm hover:shadow-md transition-all group relative overflow-hidden">
                      
                      <div className="absolute left-0 top-0 bottom-0 w-1 bg-emerald-500 opacity-0 group-hover:opacity-100 transition-opacity"></div>
@@ -447,9 +487,9 @@ const MealLogger: React.FC<MealLoggerProps> = ({ onBack, logs, onAddLog, onRemov
                        </div>
                        
                        <div className="flex gap-4 text-xs font-medium text-slate-500">
-                         <span className="flex items-center gap-1"><div className="w-2 h-2 rounded-full bg-emerald-500"></div> {log.macros.protein}g P</span>
-                         <span className="flex items-center gap-1"><div className="w-2 h-2 rounded-full bg-blue-500"></div> {log.macros.carbs}g C</span>
-                         <span className="flex items-center gap-1"><div className="w-2 h-2 rounded-full bg-amber-500"></div> {log.macros.fats}g F</span>
+                         <span className="flex items-center gap-1"><div className="w-2 h-2 rounded-full bg-emerald-500"></div> {log.macros?.protein || 0}g P</span>
+                         <span className="flex items-center gap-1"><div className="w-2 h-2 rounded-full bg-blue-500"></div> {log.macros?.carbs || 0}g C</span>
+                         <span className="flex items-center gap-1"><div className="w-2 h-2 rounded-full bg-amber-500"></div> {log.macros?.fats || 0}g F</span>
                        </div>
                      </div>
 

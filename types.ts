@@ -1,3 +1,4 @@
+
 export enum ActivityLevel {
   SEDENTARY = 'Sedentary',
   LIGHT = 'Light',
@@ -33,6 +34,12 @@ export interface UserFormData {
   // Snack configuration
   includeSnacks: boolean;
   snacksPerDay: number;
+  
+  // Budget
+  budget: 'low' | 'medium' | 'high';
+  
+  // Favorites
+  includeFavorites: boolean;
 }
 
 export interface MacroNutrients {
@@ -49,6 +56,7 @@ export interface MealItem {
   recipeTip?: string;
   ingredients?: string[];
   instructions?: string[];
+  cookingTimeMinutes?: number;
 }
 
 export interface DayPlan {
@@ -77,4 +85,5 @@ export interface FoodLogEntry {
   calories: number;
   macros: MacroNutrients;
   timestamp: string; // ISO string
+  dayNumber?: number; // 1-based index corresponding to plan day
 }

@@ -1,3 +1,4 @@
+
 import { GoogleGenAI, Type, Schema } from "@google/genai";
 import { UserFormData, NutritionPlanResponse, MealItem } from "../types";
 
@@ -45,10 +46,14 @@ const mealItemSchema: Schema = {
     instructions: { 
       type: Type.ARRAY, 
       items: { type: Type.STRING }, 
-      description: "3-4 simplified step-by-step cooking instructions" 
+      description: "5 clear, step-by-step cooking instructions" 
+    },
+    cookingTimeMinutes: {
+      type: Type.NUMBER,
+      description: "Total estimated time in minutes to prepare and cook this meal."
     }
   },
-  required: ["name", "description", "calories", "macros", "ingredients", "instructions"],
+  required: ["name", "description", "calories", "macros", "ingredients", "instructions", "cookingTimeMinutes"],
 };
 
 const dayPlanSchema: Schema = {
@@ -93,7 +98,7 @@ const responseSchema: Schema = {
   required: ["safeCalorieRange", "summary", "days", "shoppingList"],
 };
 
-export const generateMealPlan = async (data: UserFormData): Promise<NutritionPlanResponse> => {
+export const generateMealPlan = async (data: UserFormData, favorites: MealItem[] = []): Promise<NutritionPlanResponse> => {
   const modelId = "gemini-2.5-flash"; 
   const ai = getAiClient();
 
@@ -102,6 +107,17 @@ export const generateMealPlan = async (data: UserFormData): Promise<NutritionPla
   const durationInstruction = isLongDuration 
     ? "The user requested a 30-day plan. Generate a full 4-week plan (28 days). Label days strictly as 'Day 1' through 'Day 28'."
     : `Create a ${data.duration}-day meal plan.`;
+
+  const budgetLabel = data.budget === 'low' ? 'Low Cost ($)' : data.budget === 'medium' ? 'Moderate ($$)' : 'Premium ($$$)';
+
+  // Prepare favorites string if applicable
+  let favoritesInstruction = "";
+  if (data.includeFavorites && favorites.length > 0) {
+    const favList = favorites.map(f => f.name).join(", ");
+    favoritesInstruction = `THE USER HAS REQUESTED TO INCLUDE FAVORITE MEALS. 
+    Please incorporate some of the following dishes into the plan where they fit nutritionally: ${favList}. 
+    Do not simply repeat them every day, but use them as anchors for the plan.`;
+  }
 
   const prompt = `
     You are a professional nutritionist validating a meal plan.
@@ -117,10 +133,12 @@ export const generateMealPlan = async (data: UserFormData): Promise<NutritionPla
     - Main Meals per day: ${data.mealsPerDay} (e.g. Breakfast, Lunch, Dinner)
     - Snacks per day: ${data.includeSnacks ? data.snacksPerDay : '0 (No snacks)'}
     - Cuisine Preference: ${data.cuisinePreference}
+    - Budget Preference: ${budgetLabel}
 
     INSTRUCTIONS:
     ${durationInstruction}
     ${data.cuisinePreference === 'Southeast Asian Fusion' ? "The user requested a Southeast Asian focus. Ensure the meal plan includes a diverse variety of authentic dishes from Chinese, Indian, Thai, Indonesian, Vietnamese, and Malay cuisines. Do not repeat the same cuisine for every meal; mix them up." : ""}
+    ${favoritesInstruction}
     
     IMPORTANT SAFETY GUIDELINES:
     1. STRICTLY ADHERE to the Target Calorie Goal of approx ${data.targetCalories} kcal/day.
@@ -128,12 +146,15 @@ export const generateMealPlan = async (data: UserFormData): Promise<NutritionPla
     3. Ensure adequate protein (>0.8g/kg bodyweight) and balanced macronutrients.
     4. Provide specific recipes/dishes matching the cuisine preference.
     5. Meal Structure: Generate exactly ${data.mealsPerDay} main meals${data.includeSnacks ? ` and ${data.snacksPerDay} snacks` : ''} for each day. Label them clearly.
+    6. Respect the Budget: ${budgetLabel}. ${data.budget === 'low' ? "Strictly use affordable, budget-friendly ingredients (e.g. seasonal produce, frozen veg, bulk grains, eggs)." : ""} ${data.budget === 'high' ? "You may include premium ingredients (e.g. steak, seafood, fresh berries)." : ""}
     
     RECIPE DETAILS (MANDATORY):
     - INGREDIENT QUANTITIES: You MUST provide a quantity for EVERY SINGLE ingredient.
       * INCORRECT: ["Chicken", "Rice", "Salt"]
       * CORRECT: ["150g Chicken Breast", "1 cup Cooked Rice", "1/2 tsp Salt"]
       NEVER output a raw ingredient name without a measurement.
+    - INSTRUCTIONS: Provide exactly 5 distinct cooking steps.
+    - COOKING TIME: Include a realistic estimated cooking/prep time in minutes.
     - CHEF'S TIP: Provide a comprehensive 4-6 sentence tip. Go beyond "Cook it well". Suggest how to enhance flavor with spices, a specific cooking technique to keep moisture, or a healthy alternative ingredient.
 
     Output the result as a structured JSON object matching the schema.
@@ -175,6 +196,7 @@ export const getAlternativeMeal = async (
     - Diet: ${data.dietaryPreference}
     - Cuisine: ${data.cuisinePreference}
     - Allergies: ${data.allergies || "None"}
+    - Budget: ${data.budget}
 
     Current Meal to Replace: "${currentMeal.name}" (${currentMeal.calories} kcal).
     Meal Type: ${mealType}
@@ -187,6 +209,9 @@ export const getAlternativeMeal = async (
     4. Is strictly safe and healthy.
     5. INGREDIENT QUANTITIES: STRICTLY REQUIRED. e.g. "100g Tofu", NOT just "Tofu".
     6. Includes a detailed Chef's Tip (4-6 sentences) with cooking advice and variations.
+    7. Includes exactly 5 step-by-step cooking instructions.
+    8. Includes a realistic cooking time estimate in minutes.
+    9. Matches the budget: ${data.budget}.
 
     Output JSON matching the MealItem schema.
   `;
@@ -239,13 +264,11 @@ export const analyzeFoodWithAI = async (description: string, imageBase64?: strin
   const parts: any[] = [{ text: promptText }];
   
   if (imageBase64) {
-    // Ensure we strip the data:image/xxx;base64, prefix if present for the API call, 
-    // although the client might pass it clean. Let's handle both.
     const base64Data = imageBase64.includes(',') ? imageBase64.split(',')[1] : imageBase64;
     
     parts.unshift({
       inlineData: {
-        mimeType: "image/jpeg", // We'll assume jpeg/png common formats
+        mimeType: "image/jpeg",
         data: base64Data
       }
     });
@@ -270,5 +293,4 @@ export const analyzeFoodWithAI = async (description: string, imageBase64?: strin
   }
 };
 
-// Backwards compatibility alias
 export const analyzeMealDescription = (description: string) => analyzeFoodWithAI(description);

@@ -1,18 +1,20 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { NutritionPlanResponse, DayPlan, MealItem } from '../types';
-import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer, Legend } from 'recharts';
-import { ChevronDown, ChevronUp, ShoppingBag, Utensils, Flame, Leaf, BadgeCheck, CalendarDays, Check, RefreshCw, Loader2, ChefHat, Timer, Scale, Lightbulb, PlusCircle, CheckCircle2, Search, AlertTriangle } from 'lucide-react';
+import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer } from 'recharts';
+import { ChevronDown, ChevronUp, ShoppingBag, Utensils, Flame, Leaf, BadgeCheck, CalendarDays, Check, RefreshCw, Loader2, ChefHat, Timer, Scale, Lightbulb, PlusCircle, CheckCircle2, Search, AlertTriangle, Heart, Play, Pause, RotateCcw, ArrowRight, SkipForward } from 'lucide-react';
 
 interface PlanDisplayProps {
   plan: NutritionPlanResponse;
   onReset: () => void;
   onSwapMeal: (dayIndex: number, mealGroupIndex: number, itemIndex: number, currentItem: MealItem, mealType: string) => Promise<void>;
-  onLogMeal: (item: MealItem) => void;
+  onLogMeal: (item: MealItem, dayNumber: number) => void;
+  onToggleFavorite: (item: MealItem) => void;
+  favorites: MealItem[];
 }
 
 const COLORS = ['#10b981', '#3b82f6', '#f59e0b']; // Protein (Emerald), Carbs (Blue), Fats (Amber)
 
-const PlanDisplay: React.FC<PlanDisplayProps> = ({ plan, onReset, onSwapMeal, onLogMeal }) => {
+const PlanDisplay: React.FC<PlanDisplayProps> = ({ plan, onReset, onSwapMeal, onLogMeal, onToggleFavorite, favorites }) => {
   const [activeDayIndex, setActiveDayIndex] = useState(0);
   const [activeWeek, setActiveWeek] = useState(0);
   const [checkedItems, setCheckedItems] = useState<Set<string>>(new Set());
@@ -35,6 +37,13 @@ const PlanDisplay: React.FC<PlanDisplayProps> = ({ plan, onReset, onSwapMeal, on
   
   // The active day object relative to the entire plan
   const currentDayObject = visibleDays[activeDayIndex] || visibleDays[0];
+
+  // Helper to normalize day labels (e.g., "2" -> "Day 2")
+  const formatDayLabel = (dayStr: string) => {
+    if (!dayStr) return '';
+    if (dayStr.toLowerCase().startsWith('day')) return dayStr;
+    return `Day ${dayStr}`;
+  };
 
   // Filter shopping list based on search term
   const filteredShoppingList = useMemo(() => {
@@ -141,7 +150,7 @@ const PlanDisplay: React.FC<PlanDisplayProps> = ({ plan, onReset, onSwapMeal, on
                     : 'bg-white text-slate-600 hover:bg-slate-50 border border-slate-200'
                 }`}
               >
-                {day.day}
+                {formatDayLabel(day.day)}
               </button>
             ))}
           </div>
@@ -151,7 +160,7 @@ const PlanDisplay: React.FC<PlanDisplayProps> = ({ plan, onReset, onSwapMeal, on
              <div className="p-4 bg-slate-50 border-b border-slate-100 flex justify-between items-center">
                <h3 className="font-semibold text-slate-800 flex items-center gap-2">
                  <Utensils className="w-4 h-4 text-emerald-500"/> 
-                 {currentDayObject?.day} Menu
+                 {formatDayLabel(currentDayObject?.day)} Menu
                </h3>
                <span className="text-xs font-bold bg-slate-200 text-slate-600 px-2 py-1 rounded">
                  ~{currentDayObject?.totalCalories} kcal
@@ -167,7 +176,9 @@ const PlanDisplay: React.FC<PlanDisplayProps> = ({ plan, onReset, onSwapMeal, on
                           key={itemIdx} 
                           item={item} 
                           onSwap={async () => await onSwapMeal(absoluteDayIndex, groupIdx, itemIdx, item, mealGroup.type)}
-                          onLog={() => onLogMeal(item)}
+                          onLog={() => onLogMeal(item, absoluteDayIndex + 1)}
+                          onToggleFavorite={() => onToggleFavorite(item)}
+                          isFavorite={favorites.some(f => f.name === item.name)}
                        />
                      ))}
                    </div>
@@ -182,51 +193,126 @@ const PlanDisplay: React.FC<PlanDisplayProps> = ({ plan, onReset, onSwapMeal, on
           
           {/* Macros Chart */}
           {currentDayObject && (
-            <div className="bg-white rounded-2xl shadow-lg p-6 border border-slate-100">
-              <h3 className="font-semibold text-slate-800 mb-4 flex items-center gap-2">
-                <Flame className="w-4 h-4 text-orange-500"/> Daily Nutrition Breakdown
+            <div className="bg-white rounded-2xl shadow-lg p-6 border border-slate-100 relative overflow-hidden">
+               {/* Decorative background blur */}
+               <div className="absolute top-0 right-0 w-32 h-32 bg-emerald-50 rounded-full -mr-16 -mt-16 blur-3xl opacity-50"></div>
+
+              <h3 className="font-semibold text-slate-800 mb-6 flex items-center gap-2 relative z-10">
+                <Flame className="w-5 h-5 text-orange-500 fill-orange-500"/> 
+                <span className="bg-clip-text text-transparent bg-gradient-to-r from-slate-800 to-slate-600">
+                  Daily Nutrition
+                </span>
               </h3>
-              <div className="h-48 w-full">
-                <ResponsiveContainer width="100%" height="100%">
-                  <PieChart>
-                    <Pie
-                      data={[
-                        { name: 'Protein', value: currentDayObject.dailyMacros.protein },
-                        { name: 'Carbs', value: currentDayObject.dailyMacros.carbs },
-                        { name: 'Fats', value: currentDayObject.dailyMacros.fats },
-                      ]}
-                      cx="50%"
-                      cy="50%"
-                      innerRadius={40}
-                      outerRadius={70}
-                      paddingAngle={5}
-                      dataKey="value"
-                    >
-                      {COLORS.map((color, index) => (
-                        <Cell key={`cell-${index}`} fill={color} stroke="none" />
-                      ))}
-                    </Pie>
-                    <Tooltip formatter={(value) => `${value}g`} contentStyle={{borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)'}} />
-                    <Legend iconType="circle" wrapperStyle={{fontSize: '12px'}}/>
-                  </PieChart>
-                </ResponsiveContainer>
-              </div>
-              <div className="grid grid-cols-3 gap-2 mt-2">
-                  <div className="bg-emerald-50 rounded-lg p-2 text-emerald-900 flex flex-col items-center justify-center">
-                    <span className="text-[10px] uppercase font-bold text-emerald-600 mb-0.5">Protein</span>
-                    <span className="font-bold text-lg leading-none">{currentDayObject.dailyMacros.protein}g</span>
-                    <span className="text-[10px] text-emerald-600/80 font-medium">~{currentDayObject.dailyMacros.protein * 4} kcal</span>
+              
+              <div className="flex flex-col items-center justify-center relative z-10">
+                <div className="relative w-64 h-64">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <PieChart>
+                      <Pie
+                        data={[
+                          { name: 'Protein', value: currentDayObject.dailyMacros.protein },
+                          { name: 'Carbs', value: currentDayObject.dailyMacros.carbs },
+                          { name: 'Fats', value: currentDayObject.dailyMacros.fats },
+                        ]}
+                        cx="50%"
+                        cy="50%"
+                        innerRadius={75}
+                        outerRadius={95}
+                        paddingAngle={5}
+                        dataKey="value"
+                        cornerRadius={5}
+                        stroke="none"
+                      >
+                        {COLORS.map((color, index) => (
+                          <Cell key={`cell-${index}`} fill={color} />
+                        ))}
+                      </Pie>
+                      <Tooltip 
+                        content={({ active, payload }) => {
+                          if (active && payload && payload.length) {
+                            const data = payload[0].payload;
+                            return (
+                              <div className="bg-slate-900 text-white text-xs rounded-lg py-2 px-3 shadow-xl border border-slate-700">
+                                <div className="font-bold mb-1 opacity-90">{data.name}</div>
+                                <div className="flex items-center gap-2">
+                                  <span className="text-lg font-bold">{data.value}g</span>
+                                </div>
+                              </div>
+                            );
+                          }
+                          return null;
+                        }}
+                      />
+                    </PieChart>
+                  </ResponsiveContainer>
+                  
+                  {/* Center Text */}
+                  <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
+                    <span className="text-4xl font-extrabold text-slate-800 tracking-tight">
+                      {currentDayObject.totalCalories}
+                    </span>
+                    <span className="text-xs font-bold text-slate-400 uppercase tracking-wide mt-1">
+                      kcal
+                    </span>
                   </div>
-                  <div className="bg-blue-50 rounded-lg p-2 text-blue-900 flex flex-col items-center justify-center">
-                    <span className="text-[10px] uppercase font-bold text-blue-600 mb-0.5">Carbs</span>
-                    <span className="font-bold text-lg leading-none">{currentDayObject.dailyMacros.carbs}g</span>
-                    <span className="text-[10px] text-blue-600/80 font-medium">~{currentDayObject.dailyMacros.carbs * 4} kcal</span>
-                  </div>
-                  <div className="bg-amber-50 rounded-lg p-2 text-amber-900 flex flex-col items-center justify-center">
-                    <span className="text-[10px] uppercase font-bold text-amber-600 mb-0.5">Fats</span>
-                    <span className="font-bold text-lg leading-none">{currentDayObject.dailyMacros.fats}g</span>
-                    <span className="text-[10px] text-amber-600/80 font-medium">~{currentDayObject.dailyMacros.fats * 9} kcal</span>
-                  </div>
+                </div>
+
+                {/* Custom Legend / Cards */}
+                <div className="flex flex-col gap-3 w-full mt-6">
+                    {/* Protein */}
+                    <div className="flex items-center justify-between p-3 rounded-xl bg-white border border-slate-100 shadow-sm transition-transform hover:scale-[1.02] hover:shadow-md hover:border-emerald-200">
+                      <div className="flex items-center gap-3">
+                         <div className="w-10 h-10 rounded-full bg-emerald-50 flex items-center justify-center text-emerald-600">
+                           <Utensils className="w-5 h-5" />
+                         </div>
+                         <div>
+                           <span className="block text-xs font-bold text-slate-400 uppercase tracking-wider">Protein</span>
+                           <span className="block text-lg font-extrabold text-slate-800">{currentDayObject.dailyMacros.protein}g</span>
+                         </div>
+                      </div>
+                      <div className="text-right">
+                         <span className="text-xs font-bold text-emerald-600 bg-emerald-50 px-2 py-1 rounded-full">
+                           {Math.round((currentDayObject.dailyMacros.protein * 4 / currentDayObject.totalCalories) * 100)}%
+                         </span>
+                      </div>
+                    </div>
+
+                    {/* Carbs */}
+                    <div className="flex items-center justify-between p-3 rounded-xl bg-white border border-slate-100 shadow-sm transition-transform hover:scale-[1.02] hover:shadow-md hover:border-blue-200">
+                      <div className="flex items-center gap-3">
+                         <div className="w-10 h-10 rounded-full bg-blue-50 flex items-center justify-center text-blue-600">
+                           <Leaf className="w-5 h-5" />
+                         </div>
+                         <div>
+                           <span className="block text-xs font-bold text-slate-400 uppercase tracking-wider">Carbs</span>
+                           <span className="block text-lg font-extrabold text-slate-800">{currentDayObject.dailyMacros.carbs}g</span>
+                         </div>
+                      </div>
+                      <div className="text-right">
+                         <span className="text-xs font-bold text-blue-600 bg-blue-50 px-2 py-1 rounded-full">
+                           {Math.round((currentDayObject.dailyMacros.carbs * 4 / currentDayObject.totalCalories) * 100)}%
+                         </span>
+                      </div>
+                    </div>
+
+                    {/* Fats */}
+                    <div className="flex items-center justify-between p-3 rounded-xl bg-white border border-slate-100 shadow-sm transition-transform hover:scale-[1.02] hover:shadow-md hover:border-amber-200">
+                      <div className="flex items-center gap-3">
+                         <div className="w-10 h-10 rounded-full bg-amber-50 flex items-center justify-center text-amber-600">
+                           <Flame className="w-5 h-5" />
+                         </div>
+                         <div>
+                           <span className="block text-xs font-bold text-slate-400 uppercase tracking-wider">Fats</span>
+                           <span className="block text-lg font-extrabold text-slate-800">{currentDayObject.dailyMacros.fats}g</span>
+                         </div>
+                      </div>
+                      <div className="text-right">
+                         <span className="text-xs font-bold text-amber-600 bg-amber-50 px-2 py-1 rounded-full">
+                           {Math.round((currentDayObject.dailyMacros.fats * 9 / currentDayObject.totalCalories) * 100)}%
+                         </span>
+                      </div>
+                    </div>
+                </div>
               </div>
             </div>
           )}
@@ -286,7 +372,7 @@ const PlanDisplay: React.FC<PlanDisplayProps> = ({ plan, onReset, onSwapMeal, on
                             `}>
                                {isChecked && <Check size={14} className="text-white" strokeWidth={3} />}
                             </div>
-                            <span className={isChecked ? 'opacity-70' : ''}>{item}</span>
+                            <span className="leading-snug">{item}</span>
                           </li>
                         );
                       })}
@@ -303,11 +389,70 @@ const PlanDisplay: React.FC<PlanDisplayProps> = ({ plan, onReset, onSwapMeal, on
   );
 };
 
-const MealCard: React.FC<{ item: MealItem, onSwap: () => Promise<void>, onLog: () => void }> = ({ item, onSwap, onLog }) => {
+const MealCard: React.FC<{ 
+  item: MealItem, 
+  onSwap: () => Promise<void>, 
+  onLog: () => void,
+  onToggleFavorite: () => void,
+  isFavorite: boolean
+}> = ({ item, onSwap, onLog, onToggleFavorite, isFavorite }) => {
   const [isOpen, setIsOpen] = useState(false);
   const [isSwapping, setIsSwapping] = useState(false);
   const [isLogged, setIsLogged] = useState(false);
   const [showConfirm, setShowConfirm] = useState(false);
+  const [isSwapped, setIsSwapped] = useState(false);
+
+  // --- Step-Based Cooking Timer State ---
+  const [activeStepIndex, setActiveStepIndex] = useState(0);
+  const [stepTimer, setStepTimer] = useState(0); // Seconds elapsed for current step
+  const [isTimerRunning, setIsTimerRunning] = useState(false);
+  const [isCookingMode, setIsCookingMode] = useState(false);
+  const [completedSteps, setCompletedSteps] = useState<Set<number>>(new Set());
+
+  // Timer Interval
+  useEffect(() => {
+    let interval: ReturnType<typeof setInterval>;
+    if (isTimerRunning) {
+      interval = setInterval(() => {
+        setStepTimer((prev) => prev + 1);
+      }, 1000);
+    }
+    return () => clearInterval(interval);
+  }, [isTimerRunning]);
+
+  const toggleTimer = () => setIsTimerRunning(!isTimerRunning);
+  
+  const resetStepTimer = () => {
+    setIsTimerRunning(false);
+    setStepTimer(0);
+  };
+
+  const nextStep = () => {
+    setIsTimerRunning(false);
+    setCompletedSteps(prev => new Set(prev).add(activeStepIndex));
+    
+    if (item.instructions && activeStepIndex < item.instructions.length - 1) {
+      setActiveStepIndex(prev => prev + 1);
+      setStepTimer(0); // Reset timer for new step
+    } else {
+      // Completed all steps
+      setActiveStepIndex(prev => prev + 1); // Move to "Done" state
+    }
+  };
+
+  const prevStep = () => {
+    if (activeStepIndex > 0) {
+      setActiveStepIndex(prev => prev - 1);
+      setStepTimer(0); // Simplify by resetting when going back
+      setIsTimerRunning(false);
+    }
+  };
+  
+  const formatTime = (seconds: number) => {
+    const m = Math.floor(seconds / 60);
+    const s = seconds % 60;
+    return `${m}:${s < 10 ? '0' : ''}${s}`;
+  };
 
   const handleSwapClick = (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -319,6 +464,8 @@ const MealCard: React.FC<{ item: MealItem, onSwap: () => Promise<void>, onLog: (
     setIsSwapping(true);
     await onSwap();
     setIsSwapping(false);
+    setIsSwapped(true);
+    setTimeout(() => setIsSwapped(false), 2000);
   };
 
   const handleLogClick = (e: React.MouseEvent) => {
@@ -327,6 +474,14 @@ const MealCard: React.FC<{ item: MealItem, onSwap: () => Promise<void>, onLog: (
     setIsLogged(true);
     setTimeout(() => setIsLogged(false), 2000);
   };
+
+  const handleFavoriteClick = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    onToggleFavorite();
+  }
+
+  const instructions = item.instructions || [];
+  const isFinished = activeStepIndex >= instructions.length;
 
   return (
     <>
@@ -391,16 +546,22 @@ const MealCard: React.FC<{ item: MealItem, onSwap: () => Promise<void>, onLog: (
               </span>
               <button 
                   onClick={handleSwapClick}
-                  disabled={isSwapping}
-                  className="flex items-center gap-1.5 text-[10px] font-medium text-slate-400 hover:text-emerald-600 bg-white px-3 py-1 rounded border border-slate-200 hover:border-emerald-200 transition-all z-20"
+                  disabled={isSwapping || isSwapped}
+                  className={`flex items-center gap-1.5 text-[10px] font-medium px-3 py-1 rounded border transition-all z-20 ${
+                    isSwapped
+                    ? 'bg-emerald-100 text-emerald-700 border-emerald-200'
+                    : 'text-slate-400 hover:text-emerald-600 bg-white border-slate-200 hover:border-emerald-200'
+                  }`}
                   title="Swap for a different meal"
                 >
                   {isSwapping ? (
                     <Loader2 className="w-3 h-3 animate-spin" />
+                  ) : isSwapped ? (
+                    <Check className="w-3 h-3" />
                   ) : (
                     <RefreshCw className="w-3 h-3" />
                   )}
-                  Swap
+                  {isSwapped ? 'Swapped' : 'Swap'}
               </button>
               <button 
                   onClick={handleLogClick}
@@ -418,6 +579,17 @@ const MealCard: React.FC<{ item: MealItem, onSwap: () => Promise<void>, onLog: (
                   )}
                   {isLogged ? 'Logged' : 'Log Meal'}
               </button>
+              <button 
+                  onClick={handleFavoriteClick}
+                  className={`flex items-center gap-1.5 text-[10px] font-medium px-2 py-1 rounded border transition-all z-20 ${
+                    isFavorite 
+                      ? 'bg-rose-50 text-rose-500 border-rose-200 hover:bg-rose-100' 
+                      : 'bg-white text-slate-300 hover:text-rose-500 border-slate-200 hover:border-rose-200'
+                  }`}
+                  title="Save to favorites"
+                >
+                  <Heart className={`w-3 h-3 ${isFavorite ? 'fill-rose-500' : ''}`} />
+              </button>
             </div>
           </div>
         </div>
@@ -427,7 +599,6 @@ const MealCard: React.FC<{ item: MealItem, onSwap: () => Promise<void>, onLog: (
             
             {item.recipeTip && (
               <div className="mt-4 bg-gradient-to-br from-emerald-50 to-teal-50 border border-emerald-100 rounded-xl p-5 relative overflow-hidden">
-                {/* Decorative background element */}
                 <div className="absolute top-0 right-0 -mt-2 -mr-2 w-16 h-16 bg-emerald-100 rounded-full opacity-50 blur-xl"></div>
                 
                 <div className="flex gap-4 relative z-10">
@@ -468,39 +639,158 @@ const MealCard: React.FC<{ item: MealItem, onSwap: () => Promise<void>, onLog: (
                   </div>
                 )}
 
-                {/* Steps */}
-                {item.instructions && item.instructions.length > 0 && (
-                  <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
-                    <h6 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-3 flex items-center gap-2">
-                      <Timer className="w-3 h-3" /> Instructions
-                    </h6>
-                    <ol className="space-y-3">
-                      {item.instructions.map((step, i) => (
-                        <li key={i} className="text-sm text-slate-600 flex gap-3">
-                          <span className="font-bold text-emerald-600/40 font-mono text-lg leading-none select-none">{i + 1}.</span>
-                          <span className="leading-relaxed">{step}</span>
-                        </li>
-                      ))}
-                    </ol>
-                  </div>
-                )}
-              </div>
-            </div>
+                {/* Steps and Cooking Mode */}
+                <div className="space-y-4">
+                  
+                  {/* Instructions List (Context) */}
+                  {instructions.length > 0 && !isCookingMode && (
+                    <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
+                      <div className="flex justify-between items-center mb-3">
+                         <h6 className="text-xs font-bold text-slate-400 uppercase tracking-wider flex items-center gap-2">
+                           <Timer className="w-3 h-3" /> Instructions
+                         </h6>
+                         <button 
+                           onClick={() => setIsCookingMode(true)}
+                           className="text-xs bg-indigo-50 text-indigo-600 px-2 py-1 rounded font-bold hover:bg-indigo-100 transition-colors"
+                         >
+                           Start Cooking Mode
+                         </button>
+                      </div>
+                      <ol className="space-y-3">
+                        {instructions.map((step, i) => (
+                          <li key={i} className="text-sm text-slate-600 flex gap-3">
+                            <span className="font-bold text-emerald-600/40 font-mono text-lg leading-none select-none">{i + 1}.</span>
+                            <span className="leading-relaxed">{step}</span>
+                          </li>
+                        ))}
+                      </ol>
+                    </div>
+                  )}
 
-            <div className="mt-4 flex gap-3 text-xs text-slate-400 border-t border-slate-100 pt-3 justify-end">
-              <div className="flex gap-2 sm:gap-4 flex-wrap justify-end">
-                <span className="flex items-center gap-1">
-                  <span className="w-2 h-2 rounded-full bg-emerald-400"></span> 
-                  P: <b>{item.macros.protein}g</b> <span className="opacity-60 text-[10px]">({Math.round(item.macros.protein * 4)}kcal)</span>
-                </span>
-                <span className="flex items-center gap-1">
-                  <span className="w-2 h-2 rounded-full bg-blue-400"></span> 
-                  C: <b>{item.macros.carbs}g</b> <span className="opacity-60 text-[10px]">({Math.round(item.macros.carbs * 4)}kcal)</span>
-                </span>
-                <span className="flex items-center gap-1">
-                  <span className="w-2 h-2 rounded-full bg-amber-400"></span> 
-                  F: <b>{item.macros.fats}g</b> <span className="opacity-60 text-[10px]">({Math.round(item.macros.fats * 9)}kcal)</span>
-                </span>
+                  {/* Cooking Assistant Mode */}
+                  {isCookingMode && (
+                    <div className="bg-indigo-50 rounded-xl border border-indigo-100 overflow-hidden shadow-sm">
+                       {/* Header */}
+                       <div className="bg-indigo-100/50 p-3 flex justify-between items-center border-b border-indigo-100">
+                          <h6 className="text-xs font-bold text-indigo-800 uppercase tracking-wider flex items-center gap-2">
+                             <ChefHat className="w-4 h-4" /> Cooking Assistant
+                          </h6>
+                          <button 
+                             onClick={() => setIsCookingMode(false)}
+                             className="text-xs text-indigo-400 hover:text-indigo-600 font-bold"
+                          >
+                            Exit
+                          </button>
+                       </div>
+
+                       {/* Content */}
+                       <div className="p-5">
+                          {isFinished ? (
+                             <div className="text-center py-6 animate-in zoom-in">
+                                <div className="w-16 h-16 bg-emerald-100 rounded-full flex items-center justify-center mx-auto mb-4 text-emerald-600">
+                                   <BadgeCheck className="w-8 h-8" />
+                                </div>
+                                <h4 className="text-xl font-bold text-slate-800 mb-1">Bon Appétit!</h4>
+                                <p className="text-slate-500 text-sm mb-4">You've completed all steps.</p>
+                                <button 
+                                  onClick={() => {
+                                     setActiveStepIndex(0);
+                                     setStepTimer(0);
+                                     setIsCookingMode(false);
+                                  }}
+                                  className="text-sm font-bold text-emerald-600 hover:text-emerald-700"
+                                >
+                                   Close Assistant
+                                </button>
+                             </div>
+                          ) : (
+                             <div className="space-y-6">
+                                {/* Step Indicator */}
+                                <div className="flex justify-between items-center">
+                                   <span className="text-xs font-bold text-indigo-400 uppercase tracking-wide">
+                                     Step {activeStepIndex + 1} of {instructions.length}
+                                   </span>
+                                   <div className="flex gap-1">
+                                      {instructions.map((_, i) => (
+                                         <div 
+                                           key={i} 
+                                           className={`h-1.5 w-4 rounded-full transition-all ${
+                                              i === activeStepIndex ? 'bg-indigo-500' : i < activeStepIndex ? 'bg-indigo-200' : 'bg-slate-200'
+                                           }`}
+                                         ></div>
+                                      ))}
+                                   </div>
+                                </div>
+
+                                {/* Active Instruction */}
+                                <div className="min-h-[80px] flex items-center">
+                                   <p className="text-lg font-medium text-slate-800 leading-snug">
+                                      {instructions[activeStepIndex]}
+                                   </p>
+                                </div>
+
+                                {/* Timer & Controls */}
+                                <div className="flex items-center gap-4 bg-white p-4 rounded-xl border border-indigo-100 shadow-sm">
+                                   <div className="flex-1">
+                                      <div className="text-xs font-bold text-slate-400 uppercase mb-1">Step Timer</div>
+                                      <div className="font-mono text-3xl font-bold text-slate-800 tracking-tight">
+                                         {formatTime(stepTimer)}
+                                      </div>
+                                   </div>
+
+                                   <div className="flex items-center gap-2">
+                                      <button 
+                                         onClick={toggleTimer}
+                                         className={`w-12 h-12 rounded-full flex items-center justify-center transition-all ${
+                                            isTimerRunning 
+                                            ? 'bg-amber-100 text-amber-600 hover:bg-amber-200' 
+                                            : 'bg-indigo-600 text-white hover:bg-indigo-700 shadow-lg shadow-indigo-200'
+                                         }`}
+                                         title={isTimerRunning ? "Pause" : "Start Timer"}
+                                      >
+                                         {isTimerRunning ? <Pause className="w-5 h-5 fill-current" /> : <Play className="w-5 h-5 fill-current ml-1" />}
+                                      </button>
+                                      
+                                      <button 
+                                         onClick={resetStepTimer}
+                                         className="w-10 h-10 rounded-full bg-slate-100 text-slate-400 hover:bg-slate-200 hover:text-slate-600 flex items-center justify-center transition-colors"
+                                         title="Reset Timer"
+                                      >
+                                         <RotateCcw className="w-4 h-4" />
+                                      </button>
+                                   </div>
+                                </div>
+
+                                {/* Navigation */}
+                                <div className="flex gap-3 pt-2">
+                                   <button 
+                                      onClick={prevStep}
+                                      disabled={activeStepIndex === 0}
+                                      className="px-4 py-3 rounded-xl border border-slate-200 text-slate-500 font-bold text-sm hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                                   >
+                                      Back
+                                   </button>
+                                   <button 
+                                      onClick={nextStep}
+                                      className="flex-1 px-4 py-3 rounded-xl bg-indigo-600 text-white font-bold text-sm hover:bg-indigo-700 shadow-md shadow-indigo-200 transition-all flex items-center justify-center gap-2"
+                                   >
+                                      {activeStepIndex === instructions.length - 1 ? 'Finish Cooking' : 'Next Step'}
+                                      <ArrowRight className="w-4 h-4" />
+                                   </button>
+                                </div>
+                             </div>
+                          )}
+                       </div>
+                    </div>
+                  )}
+
+                  {!isCookingMode && instructions.length === 0 && (
+                     <div className="text-center py-6 text-slate-400 bg-white rounded-xl border border-dashed border-slate-200">
+                        No instructions available for this meal.
+                     </div>
+                  )}
+
+                </div>
               </div>
             </div>
           </div>

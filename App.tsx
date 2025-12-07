@@ -1,15 +1,29 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { UserFormData, NutritionPlanResponse, MealItem, FoodLogEntry } from './types';
 import { generateMealPlan, getAlternativeMeal } from './services/geminiService';
 import InputForm from './components/InputForm';
 import PlanDisplay from './components/PlanDisplay';
 import MealLogger from './components/MealLogger';
-import { Leaf, Loader2, CalendarHeart, PenLine, ArrowRight, Plus, History } from 'lucide-react';
+import FavoritesList from './components/FavoritesList';
+import { Leaf, Loader2, CalendarHeart, PenLine, ArrowRight, Plus, History, Heart, Trash2, Check } from 'lucide-react';
 
-type AppView = 'home' | 'generator' | 'logger';
+type AppView = 'home' | 'generator' | 'logger' | 'favorites';
 
 const App: React.FC = () => {
   const [view, setView] = useState<AppView>('home');
+  const [confirmReset, setConfirmReset] = useState(false);
+  
+  // Notification State
+  const [notification, setNotification] = useState<{message: string} | null>(null);
+  const notificationTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const showNotification = (message: string) => {
+    if (notificationTimeoutRef.current) clearTimeout(notificationTimeoutRef.current);
+    setNotification({ message });
+    notificationTimeoutRef.current = setTimeout(() => {
+        setNotification(null);
+    }, 3000);
+  };
   
   // Initialize from LocalStorage if available
   const [plan, setPlan] = useState<NutritionPlanResponse | null>(() => {
@@ -43,6 +57,16 @@ const App: React.FC = () => {
     }
   });
 
+  // Favorites State
+  const [favorites, setFavorites] = useState<MealItem[]>(() => {
+    try {
+      const savedFavs = localStorage.getItem('userFavorites');
+      return savedFavs ? JSON.parse(savedFavs) : [];
+    } catch (e) {
+      return [];
+    }
+  });
+
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -67,6 +91,10 @@ const App: React.FC = () => {
     localStorage.setItem('dailyLogs', JSON.stringify(logs));
   }, [logs]);
 
+  useEffect(() => {
+    localStorage.setItem('userFavorites', JSON.stringify(favorites));
+  }, [favorites]);
+
   // Log Handlers
   const addLog = (log: FoodLogEntry) => {
     setLogs(prev => [log, ...prev]);
@@ -76,15 +104,29 @@ const App: React.FC = () => {
     setLogs(prev => prev.filter(l => l.id !== id));
   };
 
-  const handleLogMealFromPlan = (item: MealItem) => {
+  const handleLogMealFromPlan = (item: MealItem, dayNumber: number = 1) => {
     const newLog: FoodLogEntry = {
       id: Date.now().toString(),
       name: item.name,
       calories: item.calories,
       macros: item.macros,
-      timestamp: new Date().toISOString()
+      timestamp: new Date().toISOString(),
+      dayNumber: dayNumber
     };
     addLog(newLog);
+    showNotification(`Logged "${item.name}" to Day ${dayNumber}`);
+  };
+
+  // Favorites Handlers
+  const toggleFavorite = (meal: MealItem) => {
+    setFavorites(prev => {
+      const exists = prev.some(f => f.name === meal.name); // Using name as simplified key
+      if (exists) {
+        return prev.filter(f => f.name !== meal.name);
+      } else {
+        return [...prev, meal];
+      }
+    });
   };
 
   const handleFormSubmit = async (data: UserFormData) => {
@@ -92,7 +134,8 @@ const App: React.FC = () => {
     setError(null);
     setCurrentFormData(data);
     try {
-      const result = await generateMealPlan(data);
+      // Pass favorites if included in request
+      const result = await generateMealPlan(data, data.includeFavorites ? favorites : []);
       setPlan(result);
     } catch (err: any) {
       console.error("Full Error:", err);
@@ -156,7 +199,7 @@ const App: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 text-slate-900 font-sans selection:bg-emerald-100 selection:text-emerald-900">
+    <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 text-slate-900 font-sans selection:bg-emerald-100 selection:text-emerald-900 pb-20">
       
       {/* Navbar */}
       <nav className="bg-white/80 backdrop-blur-md sticky top-0 z-50 border-b border-slate-200">
@@ -169,8 +212,16 @@ const App: React.FC = () => {
               NutriPlan Safe
             </span>
           </div>
-          <div className="text-xs text-slate-400 font-medium">
-            AI-Powered Nutrition
+          <div className="flex items-center gap-4">
+             {favorites.length > 0 && (
+               <button 
+                 onClick={() => setView('favorites')}
+                 className={`flex items-center gap-1.5 text-xs font-bold px-3 py-1.5 rounded-full transition-all ${view === 'favorites' ? 'bg-rose-100 text-rose-600' : 'bg-slate-50 text-slate-500 hover:bg-rose-50 hover:text-rose-500'}`}
+               >
+                 <Heart className="w-3.5 h-3.5 fill-current" />
+                 Favorites ({favorites.length})
+               </button>
+             )}
           </div>
         </div>
       </nav>
@@ -191,7 +242,8 @@ const App: React.FC = () => {
               
               {/* Option 1: Generator */}
               <div 
-                onClick={() => !plan && setView('generator')}
+                // Only allow card click if plan doesn't exist
+                onClick={!plan ? () => setView('generator') : undefined}
                 className={`bg-white p-8 rounded-3xl shadow-xl border border-slate-100 transition-all group flex flex-col relative ${!plan ? 'cursor-pointer hover:shadow-2xl hover:border-emerald-200 hover:-translate-y-1' : ''}`}
               >
                 <div className="w-16 h-16 bg-emerald-50 rounded-2xl flex items-center justify-center mb-6 group-hover:bg-emerald-100 transition-colors">
@@ -199,28 +251,49 @@ const App: React.FC = () => {
                 </div>
                 <h3 className="text-2xl font-bold text-slate-800 mb-3 group-hover:text-emerald-700 transition-colors">Generate Meal Plan</h3>
                 <p className="text-slate-500 mb-6">
-                  Create a customized 7-30 day meal plan based on your body metrics, goals, and cuisine preferences.
+                  Create a customized 1-30 day meal plan based on your body metrics, goals, and cuisine preferences.
                 </p>
                 
-                <div className="mt-auto">
+                <div className="mt-auto relative z-20">
                   {plan ? (
-                    <div className="flex flex-col gap-3 animate-in fade-in">
+                    <div className="flex flex-col gap-3 animate-in fade-in" onClick={(e) => e.stopPropagation()}>
                        <button 
+                         type="button"
                          onClick={() => setView('generator')}
                          className="w-full py-3 bg-emerald-100 text-emerald-700 rounded-xl font-bold flex items-center justify-center gap-2 hover:bg-emerald-200 transition-colors shadow-sm"
                        >
                          <History className="w-4 h-4" /> Open Existing Plan
                        </button>
                        <button 
-                         onClick={() => {
-                            if (window.confirm("Are you sure you want to create a new plan? This will replace your existing one.")) {
+                         type="button"
+                         onClick={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            if (confirmReset) {
                                handleResetGenerator();
                                setView('generator');
+                               setConfirmReset(false);
+                            } else {
+                               setConfirmReset(true);
+                               // Reset confirmation state after 3 seconds if not clicked
+                               setTimeout(() => setConfirmReset(false), 3000);
                             }
                          }}
-                         className="w-full py-3 bg-white border border-slate-200 text-slate-600 rounded-xl font-semibold flex items-center justify-center gap-2 hover:border-emerald-500 hover:text-emerald-600 transition-all"
+                         className={`w-full py-3 border rounded-xl font-semibold flex items-center justify-center gap-2 transition-all ${
+                            confirmReset 
+                            ? 'bg-red-50 border-red-200 text-red-600 shadow-inner' 
+                            : 'bg-white border-slate-200 text-slate-600 hover:border-emerald-500 hover:text-emerald-600'
+                         }`}
                        >
-                         <Plus className="w-4 h-4" /> Start New Plan
+                         {confirmReset ? (
+                            <>
+                              <Trash2 className="w-4 h-4" /> Click to Confirm Reset
+                            </>
+                         ) : (
+                            <>
+                              <Plus className="w-4 h-4" /> Start New Plan
+                            </>
+                         )}
                        </button>
                     </div>
                   ) : (
@@ -290,7 +363,11 @@ const App: React.FC = () => {
                     Tell us about yourself and we'll handle the rest.
                   </p>
                 </div>
-                <InputForm onSubmit={handleFormSubmit} isLoading={loading} />
+                <InputForm 
+                  onSubmit={handleFormSubmit} 
+                  isLoading={loading} 
+                  savedFavorites={favorites}
+                />
               </div>
             ) : (
               <div className="space-y-4">
@@ -302,6 +379,8 @@ const App: React.FC = () => {
                   onReset={handleResetGenerator} 
                   onSwapMeal={handleSwapMeal}
                   onLogMeal={handleLogMealFromPlan}
+                  onToggleFavorite={toggleFavorite}
+                  favorites={favorites}
                 />
               </div>
             )}
@@ -312,9 +391,24 @@ const App: React.FC = () => {
           <MealLogger 
             onBack={() => setView('home')} 
             logs={logs}
-            onAddLog={addLog}
+            onAddLog={(log) => {
+              addLog(log);
+              showNotification(`Logged "${log.name}" to Day ${log.dayNumber || 1}`);
+            }}
             onRemoveLog={removeLog}
             dailyGoal={currentFormData?.targetCalories || 2000}
+            planDuration={plan?.days.length || currentFormData?.duration || 1}
+          />
+        )}
+
+        {view === 'favorites' && (
+          <FavoritesList 
+             favorites={favorites}
+             onRemove={toggleFavorite}
+             onLog={(meal) => {
+               handleLogMealFromPlan(meal, 1); // Default to Day 1
+             }}
+             onBack={() => setView('home')}
           />
         )}
 
@@ -323,6 +417,16 @@ const App: React.FC = () => {
       <footer className="py-8 text-center text-slate-400 text-sm">
         <p>&copy; {new Date().getFullYear()} NutriPlan Safe. Not medical advice.</p>
       </footer>
+
+      {/* Notification Toast */}
+      {notification && (
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 bg-slate-800 text-white px-6 py-3 rounded-full shadow-2xl flex items-center gap-3 z-[100] animate-in slide-in-from-bottom-5 fade-in duration-300">
+          <div className="bg-emerald-500 rounded-full p-1">
+            <Check size={14} strokeWidth={3} className="text-white" />
+          </div>
+          <span className="font-medium text-sm">{notification.message}</span>
+        </div>
+      )}
     </div>
   );
 };
