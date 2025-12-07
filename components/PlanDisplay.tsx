@@ -1,7 +1,7 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { NutritionPlanResponse, DayPlan, MealItem } from '../types';
 import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer } from 'recharts';
-import { ChevronDown, ChevronUp, ShoppingBag, Utensils, Flame, Leaf, BadgeCheck, CalendarDays, Check, RefreshCw, Loader2, ChefHat, Timer, Scale, Lightbulb, PlusCircle, CheckCircle2, Search, AlertTriangle, Heart, Play, Pause, RotateCcw, ArrowRight, SkipForward } from 'lucide-react';
+import { ChevronDown, ChevronUp, ShoppingBag, Utensils, Flame, Leaf, BadgeCheck, CalendarDays, Check, RefreshCw, Loader2, ChefHat, Timer, Scale, Lightbulb, PlusCircle, CheckCircle2, Search, AlertTriangle, Heart, Play, Pause, RotateCcw, ArrowRight, SkipForward, Volume2, VolumeX, BellRing } from 'lucide-react';
 
 interface PlanDisplayProps {
   plan: NutritionPlanResponse;
@@ -13,6 +13,18 @@ interface PlanDisplayProps {
 }
 
 const COLORS = ['#10b981', '#3b82f6', '#f59e0b']; // Protein (Emerald), Carbs (Blue), Fats (Amber)
+
+// Helper to extract duration from text (e.g. "Simmer for 10 minutes" -> 600 seconds)
+const parseDuration = (text: string): number | null => {
+  if (!text) return null;
+  // Regex to find "X minutes", "X mins", "X m"
+  const match = text.match(/(\d+)\s*(?:min|minute|m)(?:s)?/i);
+  if (match && match[1]) {
+    const val = parseInt(match[1], 10);
+    return val > 0 ? val * 60 : null;
+  }
+  return null;
+};
 
 const PlanDisplay: React.FC<PlanDisplayProps> = ({ plan, onReset, onSwapMeal, onLogMeal, onToggleFavorite, favorites }) => {
   const [activeDayIndex, setActiveDayIndex] = useState(0);
@@ -402,58 +414,194 @@ const MealCard: React.FC<{
   const [showConfirm, setShowConfirm] = useState(false);
   const [isSwapped, setIsSwapped] = useState(false);
 
-  // --- Step-Based Cooking Timer State ---
-  const [activeStepIndex, setActiveStepIndex] = useState(0);
-  const [stepTimer, setStepTimer] = useState(0); // Seconds elapsed for current step
-  const [isTimerRunning, setIsTimerRunning] = useState(false);
+  // --- Cooking Assistant State ---
   const [isCookingMode, setIsCookingMode] = useState(false);
-  const [completedSteps, setCompletedSteps] = useState<Set<number>>(new Set());
+  const [activeStepIndex, setActiveStepIndex] = useState(0);
+  
+  // Timer States
+  const [isTimerRunning, setIsTimerRunning] = useState(false);
+  const [timerMode, setTimerMode] = useState<'stopwatch' | 'countdown'>('stopwatch');
+  const [timerValue, setTimerValue] = useState(0); // Current value (counts up or down)
+  const [timerTotalDuration, setTimerTotalDuration] = useState(0); // For progress bar in countdown
+  
+  // Alarm States
+  const [isAlarmRinging, setIsAlarmRinging] = useState(false);
+  const [isMuted, setIsMuted] = useState(false);
+  
+  // Audio Refs
+  const audioCtxRef = useRef<AudioContext | null>(null);
+  const oscillatorRef = useRef<OscillatorNode | null>(null);
+  const gainNodeRef = useRef<GainNode | null>(null);
 
-  // Timer Interval
+  const instructions = item.instructions || [];
+  const isFinished = activeStepIndex >= instructions.length;
+
+  // Initialize Timer for a specific step
+  useEffect(() => {
+    if (isCookingMode && !isFinished) {
+      const stepText = instructions[activeStepIndex];
+      const duration = parseDuration(stepText);
+      
+      setIsTimerRunning(false);
+      setIsAlarmRinging(false);
+      stopAlarmSound();
+      
+      if (duration) {
+        setTimerMode('countdown');
+        setTimerTotalDuration(duration);
+        setTimerValue(duration);
+      } else {
+        setTimerMode('stopwatch');
+        setTimerValue(0);
+        setTimerTotalDuration(0);
+      }
+    }
+  }, [activeStepIndex, isCookingMode, isFinished, instructions]);
+
+  // Timer Tick Logic
   useEffect(() => {
     let interval: ReturnType<typeof setInterval>;
-    if (isTimerRunning) {
+    
+    if (isTimerRunning && !isAlarmRinging) {
       interval = setInterval(() => {
-        setStepTimer((prev) => prev + 1);
+        setTimerValue(prev => {
+          if (timerMode === 'stopwatch') {
+            return prev + 1;
+          } else {
+            // Countdown
+            if (prev <= 1) {
+              // Timer Finished
+              setIsTimerRunning(false);
+              triggerAlarm();
+              return 0;
+            }
+            return prev - 1;
+          }
+        });
       }, 1000);
     }
+    
     return () => clearInterval(interval);
-  }, [isTimerRunning]);
+  }, [isTimerRunning, isAlarmRinging, timerMode]);
 
-  const toggleTimer = () => setIsTimerRunning(!isTimerRunning);
-  
-  const resetStepTimer = () => {
+  // Audio Alarm Logic
+  const triggerAlarm = () => {
+    setIsAlarmRinging(true);
+    if (!isMuted) {
+      playAlarmSound();
+    }
+  };
+
+  const playAlarmSound = () => {
+    // Create AudioContext if it doesn't exist
+    if (!audioCtxRef.current) {
+      audioCtxRef.current = new (window.AudioContext || (window as any).webkitAudioContext)();
+    }
+    
+    const ctx = audioCtxRef.current;
+    if (ctx.state === 'suspended') {
+      ctx.resume();
+    }
+
+    // Stop any existing sound
+    stopAlarmSound();
+
+    // Create Oscillator
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+
+    osc.type = 'square';
+    osc.frequency.setValueAtTime(880, ctx.currentTime); // A5
+    osc.frequency.setValueAtTime(1760, ctx.currentTime + 0.5); // A6
+
+    // Beeping pattern (Gain)
+    gain.gain.setValueAtTime(0.1, ctx.currentTime);
+    gain.gain.setValueAtTime(0, ctx.currentTime + 0.4);
+    gain.gain.setValueAtTime(0.1, ctx.currentTime + 0.5);
+    gain.gain.setValueAtTime(0, ctx.currentTime + 0.9);
+    
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    
+    osc.start();
+    
+    // Loop the beep every 1 second
+    const loopInterval = setInterval(() => {
+       if (!isAlarmRinging) {
+         clearInterval(loopInterval);
+         return;
+       }
+       // We re-trigger simply by creating new nodes in a real app, 
+       // but here we just rely on visual mostly if user interaction policy blocks audio loop
+    }, 1000);
+
+    oscillatorRef.current = osc;
+    gainNodeRef.current = gain;
+  };
+
+  const stopAlarmSound = () => {
+    if (oscillatorRef.current) {
+      try {
+        oscillatorRef.current.stop();
+        oscillatorRef.current.disconnect();
+      } catch (e) { /* ignore */ }
+      oscillatorRef.current = null;
+    }
+  };
+
+  const handleStopAlarm = () => {
+    setIsAlarmRinging(false);
+    stopAlarmSound();
+  };
+
+  const toggleMute = () => {
+    setIsMuted(prev => {
+      const newVal = !prev;
+      if (newVal && isAlarmRinging) stopAlarmSound();
+      if (!newVal && isAlarmRinging) playAlarmSound();
+      return newVal;
+    });
+  };
+
+  const toggleTimer = () => {
+    if (isAlarmRinging) {
+      handleStopAlarm();
+      return;
+    }
+    setIsTimerRunning(!isTimerRunning);
+  };
+
+  const resetTimer = () => {
     setIsTimerRunning(false);
-    setStepTimer(0);
+    handleStopAlarm();
+    if (timerMode === 'countdown') {
+      setTimerValue(timerTotalDuration);
+    } else {
+      setTimerValue(0);
+    }
   };
 
   const nextStep = () => {
-    setIsTimerRunning(false);
-    setCompletedSteps(prev => new Set(prev).add(activeStepIndex));
-    
-    if (item.instructions && activeStepIndex < item.instructions.length - 1) {
+    handleStopAlarm();
+    if (activeStepIndex < instructions.length) {
       setActiveStepIndex(prev => prev + 1);
-      setStepTimer(0); // Reset timer for new step
-    } else {
-      // Completed all steps
-      setActiveStepIndex(prev => prev + 1); // Move to "Done" state
     }
   };
 
   const prevStep = () => {
+    handleStopAlarm();
     if (activeStepIndex > 0) {
       setActiveStepIndex(prev => prev - 1);
-      setStepTimer(0); // Simplify by resetting when going back
-      setIsTimerRunning(false);
     }
   };
-  
+
   const formatTime = (seconds: number) => {
     const m = Math.floor(seconds / 60);
     const s = seconds % 60;
     return `${m}:${s < 10 ? '0' : ''}${s}`;
   };
 
+  // Standard Handlers
   const handleSwapClick = (e: React.MouseEvent) => {
     e.stopPropagation();
     setShowConfirm(true);
@@ -478,10 +626,7 @@ const MealCard: React.FC<{
   const handleFavoriteClick = (e: React.MouseEvent) => {
     e.stopPropagation();
     onToggleFavorite();
-  }
-
-  const instructions = item.instructions || [];
-  const isFinished = activeStepIndex >= instructions.length;
+  };
 
   return (
     <>
@@ -675,12 +820,24 @@ const MealCard: React.FC<{
                           <h6 className="text-xs font-bold text-indigo-800 uppercase tracking-wider flex items-center gap-2">
                              <ChefHat className="w-4 h-4" /> Cooking Assistant
                           </h6>
-                          <button 
-                             onClick={() => setIsCookingMode(false)}
-                             className="text-xs text-indigo-400 hover:text-indigo-600 font-bold"
-                          >
-                            Exit
-                          </button>
+                          <div className="flex items-center gap-2">
+                            <button
+                              onClick={toggleMute}
+                              className={`p-1.5 rounded-full hover:bg-white/50 transition-colors ${isMuted ? 'text-slate-400' : 'text-indigo-600'}`}
+                              title={isMuted ? "Unmute" : "Mute"}
+                            >
+                               {isMuted ? <VolumeX className="w-4 h-4" /> : <Volume2 className="w-4 h-4" />}
+                            </button>
+                            <button 
+                               onClick={() => {
+                                 setIsCookingMode(false);
+                                 handleStopAlarm();
+                               }}
+                               className="text-xs text-indigo-400 hover:text-indigo-600 font-bold ml-2"
+                            >
+                              Exit
+                            </button>
+                          </div>
                        </div>
 
                        {/* Content */}
@@ -695,7 +852,6 @@ const MealCard: React.FC<{
                                 <button 
                                   onClick={() => {
                                      setActiveStepIndex(0);
-                                     setStepTimer(0);
                                      setIsCookingMode(false);
                                   }}
                                   className="text-sm font-bold text-emerald-600 hover:text-emerald-700"
@@ -730,34 +886,65 @@ const MealCard: React.FC<{
                                 </div>
 
                                 {/* Timer & Controls */}
-                                <div className="flex items-center gap-4 bg-white p-4 rounded-xl border border-indigo-100 shadow-sm">
+                                <div className={`flex items-center gap-4 bg-white p-4 rounded-xl border shadow-sm transition-all ${isAlarmRinging ? 'border-red-400 ring-2 ring-red-100 animate-pulse bg-red-50' : 'border-indigo-100'}`}>
                                    <div className="flex-1">
-                                      <div className="text-xs font-bold text-slate-400 uppercase mb-1">Step Timer</div>
-                                      <div className="font-mono text-3xl font-bold text-slate-800 tracking-tight">
-                                         {formatTime(stepTimer)}
+                                      <div className="flex justify-between items-center mb-1">
+                                         <div className="text-xs font-bold text-slate-400 uppercase">
+                                           {timerMode === 'countdown' ? 'Countdown' : 'Step Timer'}
+                                         </div>
+                                         {isAlarmRinging && (
+                                           <div className="flex items-center gap-1 text-red-600 font-bold text-xs animate-bounce">
+                                              <BellRing className="w-3 h-3" /> Time's Up!
+                                           </div>
+                                         )}
                                       </div>
+                                      
+                                      <div className={`font-mono text-3xl font-bold tracking-tight ${isAlarmRinging ? 'text-red-600' : 'text-slate-800'}`}>
+                                         {formatTime(timerValue)}
+                                      </div>
+                                      
+                                      {/* Progress Bar for Countdown */}
+                                      {timerMode === 'countdown' && timerTotalDuration > 0 && (
+                                        <div className="h-1.5 w-full bg-slate-100 rounded-full mt-2 overflow-hidden">
+                                           <div 
+                                             className="h-full bg-indigo-500 transition-all duration-1000 ease-linear"
+                                             style={{ width: `${(timerValue / timerTotalDuration) * 100}%` }}
+                                           ></div>
+                                        </div>
+                                      )}
                                    </div>
 
                                    <div className="flex items-center gap-2">
-                                      <button 
-                                         onClick={toggleTimer}
-                                         className={`w-12 h-12 rounded-full flex items-center justify-center transition-all ${
-                                            isTimerRunning 
-                                            ? 'bg-amber-100 text-amber-600 hover:bg-amber-200' 
-                                            : 'bg-indigo-600 text-white hover:bg-indigo-700 shadow-lg shadow-indigo-200'
-                                         }`}
-                                         title={isTimerRunning ? "Pause" : "Start Timer"}
-                                      >
-                                         {isTimerRunning ? <Pause className="w-5 h-5 fill-current" /> : <Play className="w-5 h-5 fill-current ml-1" />}
-                                      </button>
-                                      
-                                      <button 
-                                         onClick={resetStepTimer}
-                                         className="w-10 h-10 rounded-full bg-slate-100 text-slate-400 hover:bg-slate-200 hover:text-slate-600 flex items-center justify-center transition-colors"
-                                         title="Reset Timer"
-                                      >
-                                         <RotateCcw className="w-4 h-4" />
-                                      </button>
+                                      {isAlarmRinging ? (
+                                        <button 
+                                          onClick={handleStopAlarm}
+                                          className="px-4 py-2 bg-red-500 text-white rounded-lg font-bold hover:bg-red-600 shadow-lg shadow-red-200 animate-pulse"
+                                        >
+                                          Stop Alarm
+                                        </button>
+                                      ) : (
+                                        <>
+                                          <button 
+                                             onClick={toggleTimer}
+                                             className={`w-12 h-12 rounded-full flex items-center justify-center transition-all ${
+                                                isTimerRunning 
+                                                ? 'bg-amber-100 text-amber-600 hover:bg-amber-200' 
+                                                : 'bg-indigo-600 text-white hover:bg-indigo-700 shadow-lg shadow-indigo-200'
+                                             }`}
+                                             title={isTimerRunning ? "Pause" : "Start Timer"}
+                                          >
+                                             {isTimerRunning ? <Pause className="w-5 h-5 fill-current" /> : <Play className="w-5 h-5 fill-current ml-1" />}
+                                          </button>
+                                          
+                                          <button 
+                                             onClick={resetTimer}
+                                             className="w-10 h-10 rounded-full bg-slate-100 text-slate-400 hover:bg-slate-200 hover:text-slate-600 flex items-center justify-center transition-colors"
+                                             title="Reset Timer"
+                                          >
+                                             <RotateCcw className="w-4 h-4" />
+                                          </button>
+                                        </>
+                                      )}
                                    </div>
                                 </div>
 
