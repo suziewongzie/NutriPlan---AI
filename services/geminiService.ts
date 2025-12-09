@@ -1,4 +1,3 @@
-
 import { GoogleGenAI, Type, Schema } from "@google/genai";
 import { UserFormData, NutritionPlanResponse, MealItem } from "../types";
 
@@ -234,6 +233,117 @@ export const getAlternativeMeal = async (
   } catch (error) {
     console.error("Gemini Swap Error:", error);
     throw error;
+  }
+};
+
+export const getIngredientSubstitute = async (
+  mealName: string,
+  ingredient: string,
+  cuisine: string,
+  dietaryPreference: string,
+  userSuggestion?: string
+): Promise<{ 
+  substitute: string; 
+  updatedTitle: string; 
+  shoppingCategory: string;
+  shoppingListAdd: string;
+  shoppingListRemoveKeyword: string;
+  newInstructions: string[];
+  newChefSecret: string;
+}> => {
+  const modelId = "gemini-2.5-flash";
+  const ai = getAiClient();
+
+  const prompt = `
+    Context: The user is preparing "${mealName}" (Cuisine: ${cuisine}).
+    Dietary Restriction: ${dietaryPreference}.
+    Ingredient to replace: "${ingredient}".
+    ${userSuggestion ? `User's suggested replacement: "${userSuggestion}".` : "No user suggestion provided."}
+
+    Tasks:
+    1. Determine the best valid substitute for "${ingredient}".
+       - If the user suggested something valid, use it with appropriate quantity scaling.
+       - If the user suggested something invalid (e.g. ketchup in fruit salad), ignore it and provide a better substitute.
+       - If no suggestion, provide a culturally appropriate substitute.
+    
+    2. Check if the Meal Title ("${mealName}") needs to change.
+       - If the swapped ingredient was a key part of the title (e.g. "Chicken" in "Chicken Curry"), update the title (e.g. "Tofu Curry").
+       - If the ingredient was minor (e.g. "Salt" in "Chicken Curry"), keep the original title.
+    
+    3. Categorize the new ingredient for a shopping list (e.g. "Produce", "Meat", "Pantry", "Dairy").
+
+    4. Provide the Shopping List details:
+       - What to ADD to the shopping list. MUST INCLUDE QUANTITY. (e.g. "200g Sliced Beef", "1 block Firm Tofu").
+       - What keyword to use to REMOVE the old ingredient from the shopping list (e.g. if replacing "1 tbsp Green Curry Paste", the keyword is "Green Curry").
+
+    5. PROVIDE NEW INSTRUCTIONS:
+       - Generate 5 clear, step-by-step cooking instructions for this meal, adapted for the NEW ingredient.
+       - e.g. If swapping Chicken for Beef, change cooking times or methods if necessary.
+       
+    6. PROVIDE A NEW CHEF'S SECRET:
+       - Generate a new 4-6 sentence professional chef tip.
+       - It MUST be relevant to the NEW ingredient/dish.
+       - Explain how to cook the new ingredient perfectly or how it changes the flavor profile.
+
+    Output JSON format:
+    {
+      "substitute": "Quantity + Ingredient Name" (e.g. "200g Firm Tofu"),
+      "updatedTitle": "The new or original meal title",
+      "shoppingCategory": "Category Name",
+      "shoppingListAdd": "Quantity + Grocery Item Name" (e.g. "200g Firm Tofu"),
+      "shoppingListRemoveKeyword": "Keyword from old ingredient" (e.g. "Chicken"),
+      "newInstructions": ["Step 1...", "Step 2...", "Step 3...", "Step 4...", "Step 5..."],
+      "newChefSecret": "New chef tip text..."
+    }
+  `;
+
+  const schema: Schema = {
+    type: Type.OBJECT,
+    properties: {
+      substitute: { type: Type.STRING },
+      updatedTitle: { type: Type.STRING },
+      shoppingCategory: { type: Type.STRING },
+      shoppingListAdd: { type: Type.STRING },
+      shoppingListRemoveKeyword: { type: Type.STRING },
+      newInstructions: { type: Type.ARRAY, items: { type: Type.STRING } },
+      newChefSecret: { type: Type.STRING }
+    },
+    required: ["substitute", "updatedTitle", "shoppingCategory", "shoppingListAdd", "shoppingListRemoveKeyword", "newInstructions", "newChefSecret"]
+  };
+
+  try {
+    const result = await ai.models.generateContent({
+      model: modelId,
+      contents: prompt,
+      config: {
+        responseMimeType: "application/json",
+        responseSchema: schema
+      },
+    });
+
+    const text = result.text;
+    if (!text) throw new Error("No data returned");
+    return JSON.parse(text) as { 
+      substitute: string; 
+      updatedTitle: string; 
+      shoppingCategory: string;
+      shoppingListAdd: string;
+      shoppingListRemoveKeyword: string;
+      newInstructions: string[];
+      newChefSecret: string;
+    };
+  } catch (error) {
+    console.error("Gemini Ingredient Swap Error:", error);
+    // Fallback if AI fails
+    return { 
+      substitute: ingredient, 
+      updatedTitle: mealName, 
+      shoppingCategory: "Pantry",
+      shoppingListAdd: ingredient,
+      shoppingListRemoveKeyword: ingredient,
+      newInstructions: [],
+      newChefSecret: "Enjoy your meal!"
+    }; 
   }
 };
 

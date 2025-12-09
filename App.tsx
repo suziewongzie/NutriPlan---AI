@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { UserFormData, NutritionPlanResponse, MealItem, FoodLogEntry } from './types';
-import { generateMealPlan, getAlternativeMeal } from './services/geminiService';
+import { generateMealPlan, getAlternativeMeal, getIngredientSubstitute } from './services/geminiService';
 import InputForm from './components/InputForm';
 import PlanDisplay from './components/PlanDisplay';
 import MealLogger from './components/MealLogger';
@@ -198,6 +198,110 @@ const App: React.FC = () => {
     }
   };
 
+  const handleIngredientSwap = async (
+    dayIndex: number, 
+    mealGroupIndex: number, 
+    itemIndex: number, 
+    ingredientIndex: number,
+    currentIngredient: string,
+    mealName: string,
+    userSuggestion?: string
+  ) => {
+    if (!plan || !currentFormData) return;
+
+    try {
+       const result = await getIngredientSubstitute(
+         mealName,
+         currentIngredient,
+         currentFormData.cuisinePreference,
+         currentFormData.dietaryPreference,
+         userSuggestion
+       );
+
+       const newPlan = JSON.parse(JSON.stringify(plan)) as NutritionPlanResponse;
+       const item = newPlan.days[dayIndex].meals[mealGroupIndex].items[itemIndex];
+       
+       // Update the specific ingredient line
+       if (item.ingredients) {
+         item.ingredients[ingredientIndex] = result.substitute;
+       }
+       
+       // Update instructions if provided
+       if (result.newInstructions && result.newInstructions.length > 0) {
+         item.instructions = result.newInstructions;
+       }
+
+       // Update Chef's Secret / Recipe Tip
+       if (result.newChefSecret) {
+         item.recipeTip = result.newChefSecret;
+       }
+       
+       // Update the meal name if the AI suggested a title change
+       const oldTitle = item.name;
+       if (result.updatedTitle && result.updatedTitle !== oldTitle) {
+          item.name = result.updatedTitle;
+          showNotification(`Swapped & renamed to "${result.updatedTitle}"`);
+       } else {
+          showNotification(`Swapped: ${result.substitute}`);
+       }
+
+       // Update Shopping List
+       
+       // 1. Safe Removal: Check if the "removeKey" is used in ANY other meal in the plan
+       // If it is used elsewhere, DO NOT remove it from the shopping list.
+       const removeKey = result.shoppingListRemoveKeyword.toLowerCase();
+       let isUsedElsewhere = false;
+       
+       // Iterate through all days in the NEW plan (since we've already updated the current ingredient)
+       for (const day of newPlan.days) {
+         for (const mealGroup of day.meals) {
+           for (const mealItem of mealGroup.items) {
+              if (mealItem.ingredients) {
+                for (const ing of mealItem.ingredients) {
+                   if (ing.toLowerCase().includes(removeKey)) {
+                      isUsedElsewhere = true;
+                      break;
+                   }
+                }
+              }
+              if (isUsedElsewhere) break;
+           }
+           if (isUsedElsewhere) break;
+         }
+         if (isUsedElsewhere) break;
+       }
+
+       // Only remove if it's truly not needed anymore
+       if (!isUsedElsewhere) {
+          newPlan.shoppingList.forEach(cat => {
+            cat.items = cat.items.filter(i => !i.toLowerCase().includes(removeKey));
+          });
+       }
+
+       // 2. Add new item using clean shopping list name + quantity
+       const targetCategory = result.shoppingCategory || 'Pantry';
+       const itemToAdd = result.shoppingListAdd || result.substitute; // Fallback
+
+       let category = newPlan.shoppingList.find(c => c.category.toLowerCase() === targetCategory.toLowerCase());
+       
+       if (!category) {
+         // Create new category if it doesn't exist
+         category = { category: targetCategory, items: [] };
+         newPlan.shoppingList.push(category);
+       }
+       
+       // Avoid duplicates if exact string already exists
+       if (!category.items.includes(itemToAdd)) {
+          category.items.push(itemToAdd);
+       }
+       
+       setPlan(newPlan);
+    } catch (err) {
+      console.error("Failed to swap ingredient", err);
+      showNotification("Could not swap ingredient. Try again.");
+    }
+  };
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 text-slate-900 font-sans selection:bg-emerald-100 selection:text-emerald-900 pb-20">
       
@@ -380,6 +484,7 @@ const App: React.FC = () => {
                   onSwapMeal={handleSwapMeal}
                   onLogMeal={handleLogMealFromPlan}
                   onToggleFavorite={toggleFavorite}
+                  onSwapIngredient={handleIngredientSwap}
                   favorites={favorites}
                 />
               </div>

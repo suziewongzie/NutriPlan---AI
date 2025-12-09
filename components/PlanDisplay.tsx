@@ -1,7 +1,7 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { NutritionPlanResponse, DayPlan, MealItem } from '../types';
 import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer } from 'recharts';
-import { ChevronDown, ChevronUp, ShoppingBag, Utensils, Flame, Leaf, BadgeCheck, CalendarDays, Check, RefreshCw, Loader2, ChefHat, Timer, Scale, Lightbulb, PlusCircle, CheckCircle2, Search, AlertTriangle, Heart, Play, Pause, RotateCcw, ArrowRight, SkipForward, Volume2, VolumeX, BellRing } from 'lucide-react';
+import { ChevronDown, ChevronUp, ShoppingBag, Utensils, Flame, Leaf, BadgeCheck, CalendarDays, Check, RefreshCw, Loader2, ChefHat, Timer, Scale, Lightbulb, PlusCircle, CheckCircle2, Search, AlertTriangle, Heart, Play, Pause, RotateCcw, ArrowRight, SkipForward, Volume2, VolumeX, BellRing, Wand2 } from 'lucide-react';
 
 interface PlanDisplayProps {
   plan: NutritionPlanResponse;
@@ -9,6 +9,15 @@ interface PlanDisplayProps {
   onSwapMeal: (dayIndex: number, mealGroupIndex: number, itemIndex: number, currentItem: MealItem, mealType: string) => Promise<void>;
   onLogMeal: (item: MealItem, dayNumber: number) => void;
   onToggleFavorite: (item: MealItem) => void;
+  onSwapIngredient: (
+    dayIndex: number, 
+    mealGroupIndex: number, 
+    itemIndex: number, 
+    ingredientIndex: number,
+    currentIngredient: string,
+    mealName: string,
+    userSuggestion?: string
+  ) => Promise<void>;
   favorites: MealItem[];
 }
 
@@ -26,7 +35,7 @@ const parseDuration = (text: string): number | null => {
   return null;
 };
 
-const PlanDisplay: React.FC<PlanDisplayProps> = ({ plan, onReset, onSwapMeal, onLogMeal, onToggleFavorite, favorites }) => {
+const PlanDisplay: React.FC<PlanDisplayProps> = ({ plan, onReset, onSwapMeal, onLogMeal, onToggleFavorite, onSwapIngredient, favorites }) => {
   const [activeDayIndex, setActiveDayIndex] = useState(0);
   const [activeWeek, setActiveWeek] = useState(0);
   const [checkedItems, setCheckedItems] = useState<Set<string>>(new Set());
@@ -190,6 +199,9 @@ const PlanDisplay: React.FC<PlanDisplayProps> = ({ plan, onReset, onSwapMeal, on
                           onSwap={async () => await onSwapMeal(absoluteDayIndex, groupIdx, itemIdx, item, mealGroup.type)}
                           onLog={() => onLogMeal(item, absoluteDayIndex + 1)}
                           onToggleFavorite={() => onToggleFavorite(item)}
+                          onSwapIngredient={async (ingIdx, currentIng, suggestion) => 
+                            await onSwapIngredient(absoluteDayIndex, groupIdx, itemIdx, ingIdx, currentIng, item.name, suggestion)
+                          }
                           isFavorite={favorites.some(f => f.name === item.name)}
                        />
                      ))}
@@ -406,13 +418,23 @@ const MealCard: React.FC<{
   onSwap: () => Promise<void>, 
   onLog: () => void,
   onToggleFavorite: () => void,
+  onSwapIngredient: (index: number, current: string, suggestion?: string) => Promise<void>,
   isFavorite: boolean
-}> = ({ item, onSwap, onLog, onToggleFavorite, isFavorite }) => {
+}> = ({ item, onSwap, onLog, onToggleFavorite, onSwapIngredient, isFavorite }) => {
   const [isOpen, setIsOpen] = useState(false);
   const [isSwapping, setIsSwapping] = useState(false);
   const [isLogged, setIsLogged] = useState(false);
   const [showConfirm, setShowConfirm] = useState(false);
   const [isSwapped, setIsSwapped] = useState(false);
+  
+  // Ingredient Swap State
+  const [swappingIngredients, setSwappingIngredients] = useState<Set<number>>(new Set());
+  
+  // New Modal State for Ingredient Swap
+  const [swapModalOpen, setSwapModalOpen] = useState(false);
+  const [swapTargetIndex, setSwapTargetIndex] = useState<number | null>(null);
+  const [swapTargetName, setSwapTargetName] = useState("");
+  const [userSwapInput, setUserSwapInput] = useState("");
 
   // --- Cooking Assistant State ---
   const [isCookingMode, setIsCookingMode] = useState(false);
@@ -627,9 +649,92 @@ const MealCard: React.FC<{
     e.stopPropagation();
     onToggleFavorite();
   };
+  
+  const openIngredientSwapModal = (index: number, currentIng: string) => {
+     setSwapTargetIndex(index);
+     setSwapTargetName(currentIng);
+     setUserSwapInput(""); // Reset input
+     setSwapModalOpen(true);
+  };
+  
+  const handleConfirmIngredientSwap = async () => {
+    if (swapTargetIndex === null) return;
+    
+    setSwapModalOpen(false);
+    setSwappingIngredients(prev => new Set(prev).add(swapTargetIndex));
+    
+    await onSwapIngredient(swapTargetIndex, swapTargetName, userSwapInput);
+    
+    setSwappingIngredients(prev => {
+      const next = new Set(prev);
+      next.delete(swapTargetIndex);
+      return next;
+    });
+    
+    setSwapTargetIndex(null);
+    setSwapTargetName("");
+  };
 
   return (
     <>
+      {/* Ingredient Swap Modal */}
+      {swapModalOpen && (
+        <div 
+          className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm animate-in fade-in duration-200"
+          onClick={(e) => { e.stopPropagation(); setSwapModalOpen(false); }}
+        >
+          <div 
+             className="bg-white rounded-2xl shadow-2xl p-6 max-w-sm w-full border border-slate-100 animate-in zoom-in-95 duration-200"
+             onClick={(e) => e.stopPropagation()}
+          >
+             <div className="flex items-center gap-3 mb-4 text-emerald-700">
+               <div className="w-10 h-10 bg-emerald-100 rounded-full flex items-center justify-center">
+                 <RefreshCw className="w-5 h-5" />
+               </div>
+               <h3 className="text-lg font-bold text-slate-800">Swap Ingredient</h3>
+             </div>
+             
+             <p className="text-sm text-slate-500 mb-4">
+               Replace <b>"{swapTargetName}"</b> with something else?
+             </p>
+
+             <div className="mb-6">
+                <label className="block text-xs font-bold text-slate-400 uppercase mb-1.5 ml-1">Preferred Ingredient (Optional)</label>
+                <input 
+                  type="text" 
+                  value={userSwapInput}
+                  onChange={(e) => setUserSwapInput(e.target.value)}
+                  placeholder="e.g. Almond Milk, Tofu..."
+                  className="w-full px-4 py-2.5 rounded-xl border border-slate-200 focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none transition-all text-sm"
+                  autoFocus
+                />
+                <p className="text-[10px] text-slate-400 mt-1.5 ml-1">
+                  Leave empty for an automatic suggestion.
+                </p>
+             </div>
+
+             <div className="flex gap-3">
+               <button 
+                 onClick={() => setSwapModalOpen(false)}
+                 className="flex-1 py-2.5 rounded-xl border border-slate-200 text-slate-600 font-semibold hover:bg-slate-50 transition-colors text-sm"
+               >
+                 Cancel
+               </button>
+               <button 
+                 onClick={handleConfirmIngredientSwap}
+                 className="flex-1 py-2.5 rounded-xl bg-emerald-600 text-white font-semibold hover:bg-emerald-700 shadow-md shadow-emerald-200 transition-all text-sm flex items-center justify-center gap-2"
+               >
+                 {userSwapInput.trim() ? (
+                    <>Swap It <CheckCircle2 className="w-3.5 h-3.5" /></>
+                 ) : (
+                    <>Auto Suggest <Wand2 className="w-3.5 h-3.5" /></>
+                 )}
+               </button>
+             </div>
+          </div>
+        </div>
+      )}
+
       {/* Confirmation Modal */}
       {showConfirm && (
         <div 
@@ -775,9 +880,24 @@ const MealCard: React.FC<{
                     </h6>
                     <ul className="space-y-2.5">
                       {item.ingredients.map((ing, i) => (
-                        <li key={i} className="text-sm text-slate-700 flex items-start gap-2.5 border-b border-dashed border-slate-100 last:border-0 pb-1.5 last:pb-0">
-                          <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 mt-2 flex-shrink-0"></div>
-                          <span className="leading-snug">{ing}</span>
+                        <li key={i} className="text-sm text-slate-700 flex items-start justify-between gap-2.5 border-b border-dashed border-slate-100 last:border-0 pb-1.5 last:pb-0 group/ing">
+                          <div className="flex items-start gap-2.5">
+                             <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 mt-2 flex-shrink-0"></div>
+                             <span className="leading-snug">{ing}</span>
+                          </div>
+                          
+                          <button 
+                             onClick={() => openIngredientSwapModal(i, ing)}
+                             disabled={swappingIngredients.has(i)}
+                             className={`p-1 rounded hover:bg-slate-100 text-slate-300 hover:text-emerald-600 transition-colors ${swappingIngredients.has(i) ? 'opacity-100' : 'opacity-0 group-hover/ing:opacity-100'}`}
+                             title="Swap this ingredient"
+                          >
+                             {swappingIngredients.has(i) ? (
+                               <Loader2 className="w-3.5 h-3.5 animate-spin text-emerald-500" />
+                             ) : (
+                               <RefreshCw className="w-3.5 h-3.5" />
+                             )}
+                          </button>
                         </li>
                       ))}
                     </ul>
